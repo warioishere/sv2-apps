@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useJdcStatus } from '../../hooks/useJdcStatus';
 import { apiService } from '../../services/api.service';
+import { LogViewer } from '../LogViewer/LogViewer';
 import './StatusPanel.css';
 
 export function StatusPanel() {
@@ -127,6 +128,10 @@ export function StatusPanel() {
         >
           {actionLoading ? 'Restarting...' : 'Restart'}
         </button>
+      </div>
+
+      <div className="logs-section">
+        <LogViewer />
       </div>
     </div>
   );

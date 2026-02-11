@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { StatusPanel } from './components/StatusPanel/StatusPanel';
 import { ConfigForm } from './components/ConfigForm/ConfigForm';
-import { LogViewer } from './components/LogViewer/LogViewer';
 import { SetupWizard } from './components/SetupWizard/SetupWizard';
 import { UpdateManager } from './components/UpdateManager/UpdateManager';
 import { TemplateProviderPanel } from './components/TemplateProviderPanel/TemplateProviderPanel';
 import { BitcoinCore } from './components/BitcoinCore/BitcoinCore';
 import './App.css';
 
-type View = 'wizard' | 'config' | 'logs' | 'bitcoin-core' | 'template-provider' | 'updates';
+type View = 'wizard' | 'status' | 'config' | 'bitcoin-core' | 'template-provider' | 'updates';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('wizard');
@@ -25,7 +24,7 @@ function App() {
           className={currentView === 'wizard' ? 'active' : ''}
           onClick={() => setCurrentView('wizard')}
         >
-          🚀 Setup Wizard
+          Setup Wizard
         </button>
         <button
           className={currentView === 'config' ? 'active' : ''}
@@ -34,10 +33,10 @@ function App() {
           Configuration
         </button>
         <button
-          className={currentView === 'logs' ? 'active' : ''}
-          onClick={() => setCurrentView('logs')}
+          className={currentView === 'status' ? 'active' : ''}
+          onClick={() => setCurrentView('status')}
         >
-          Logs
+          JD-Client Status
         </button>
         <button
           className={currentView === 'bitcoin-core' ? 'active' : ''}
@@ -55,16 +54,14 @@ function App() {
           className={currentView === 'updates' ? 'active' : ''}
           onClick={() => setCurrentView('updates')}
         >
-          ⬆️ Updates
+          Updates
         </button>
       </nav>
 
       <main className="app-main">
-        <StatusPanel />
-
         {currentView === 'wizard' && <SetupWizard />}
+        {currentView === 'status' && <StatusPanel />}
         {currentView === 'config' && <ConfigForm />}
-        {currentView === 'logs' && <LogViewer />}
         {currentView === 'bitcoin-core' && <BitcoinCore />}
         {currentView === 'template-provider' && <TemplateProviderPanel />}
         {currentView === 'updates' && <UpdateManager />}
