@@ -51,14 +51,20 @@ export class UpdateService extends EventEmitter {
         throw new Error(`Repository not found at ${this.repoPath}. Please ensure the repo is cloned.`);
       }
 
+      // Get current branch
+      const currentBranch = await this.execCommand('git', ['rev-parse', '--abbrev-ref', 'HEAD'], this.repoPath);
+      const branch = currentBranch.trim();
+
+      logger.info(`Checking for updates on branch: ${branch}`);
+
       // Get current commit hash
       const currentHash = await this.execCommand('git', ['rev-parse', '--short', 'HEAD'], this.repoPath);
 
-      // Fetch latest from remote
-      await this.execCommand('git', ['fetch', 'origin', 'main'], this.repoPath);
+      // Fetch latest from remote for current branch
+      await this.execCommand('git', ['fetch', 'origin', branch], this.repoPath);
 
-      // Get latest remote commit hash
-      const latestHash = await this.execCommand('git', ['rev-parse', '--short', 'origin/main'], this.repoPath);
+      // Get latest remote commit hash for current branch
+      const latestHash = await this.execCommand('git', ['rev-parse', '--short', `origin/${branch}`], this.repoPath);
 
       const available = currentHash.trim() !== latestHash.trim();
 
@@ -126,9 +132,16 @@ export class UpdateService extends EventEmitter {
 
   private async gitPull(): Promise<void> {
     logger.info('Pulling latest code from git...');
-    const output = await this.execCommand('git', ['pull', 'origin', 'main'], this.repoPath);
+
+    // Get current branch
+    const currentBranch = await this.execCommand('git', ['rev-parse', '--abbrev-ref', 'HEAD'], this.repoPath);
+    const branch = currentBranch.trim();
+
+    logger.info(`Pulling from origin/${branch}...`);
+    const output = await this.execCommand('git', ['pull', 'origin', branch], this.repoPath);
     logger.info(`Git pull output: ${output}`);
-    this.emit('update-log', `Git: ${output}`);
+    this.emit('update-log', `Git: Pulled from origin/${branch}`);
+    this.emit('update-log', output);
   }
 
   private async backupBinary(): Promise<void> {
