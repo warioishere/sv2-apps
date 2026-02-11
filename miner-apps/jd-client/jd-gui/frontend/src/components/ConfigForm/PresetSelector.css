@@ -1,0 +1,131 @@
+.preset-selector {
+  background: #f0f7ff;
+  border: 2px dashed #3b82f6;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.preset-header h3 {
+  margin: 0 0 8px 0;
+  color: #1e40af;
+  font-size: 16px;
+}
+
+.preset-description {
+  margin: 0 0 16px 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.preset-guide {
+  margin-bottom: 16px;
+}
+
+.preset-guide details {
+  background: white;
+  border-radius: 6px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.preset-guide summary {
+  font-weight: 600;
+  color: #3b82f6;
+  font-size: 14px;
+  user-select: none;
+  list-style: none;
+}
+
+.preset-guide summary::-webkit-details-marker {
+  display: none;
+}
+
+.preset-guide summary:hover {
+  color: #2563eb;
+}
+
+.preset-help {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.preset-help h4 {
+  margin: 12px 0 6px 0;
+  font-size: 13px;
+  color: #374151;
+  font-weight: 600;
+}
+
+.preset-help ul {
+  margin: 0 0 12px 0;
+  padding-left: 20px;
+}
+
+.preset-help li {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.preset-help strong {
+  color: #1e293b;
+}
+
+.preset-recommendation {
+  margin: 16px 0 0 0;
+  padding: 12px;
+  background: #f0fdf4;
+  border-left: 3px solid #22c55e;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #166534;
+}
+
+.preset-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.preset-dropdown {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 14px;
+  background: white;
+}
+
+.preset-dropdown:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.preset-dropdown:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+}
+
+.preset-info {
+  margin-top: 12px;
+  padding: 12px;
+  background: white;
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.preset-error {
+  margin-top: 12px;
+  padding: 12px;
+  background: #fee2e2;
+  border-left: 3px solid #dc2626;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #dc2626;
+}

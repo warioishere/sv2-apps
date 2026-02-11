@@ -1,0 +1,1 @@
+export { TpConfig } from './TpConfig';

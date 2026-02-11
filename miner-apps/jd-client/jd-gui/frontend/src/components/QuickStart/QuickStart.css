@@ -1,0 +1,40 @@
+.quickstart {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
+}
+
+.quickstart h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 20px;
+  color: #333;
+}
+
+.quickstart-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.step {
+  padding: 16px;
+  background: #f9fafb;
+  border-left: 4px solid #3b82f6;
+  border-radius: 4px;
+}
+
+.step h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 16px;
+  color: #374151;
+}
+
+.step p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
