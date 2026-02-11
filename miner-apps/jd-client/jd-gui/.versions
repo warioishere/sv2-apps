@@ -1,0 +1,6 @@
+# JD-Client GUI Component Versions
+# Update these to upgrade specific components
+
+# Template Provider (sv2-tp)
+# Repository: https://github.com/stratum-mining/sv2-tp
+SV2_TP_COMMIT=f4dfc9ed004cb455e3f5e99f4b533e583b3d3dd3

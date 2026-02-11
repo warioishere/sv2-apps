@@ -22,6 +22,9 @@ RUN cargo build --release
 # Stage 1b: Build sv2-tp (Template Provider)
 FROM debian:bookworm-slim AS tp-builder
 
+# sv2-tp version - can be overridden via docker-compose build arg
+ARG SV2_TP_COMMIT=f4dfc9ed004cb455e3f5e99f4b533e583b3d3dd3
+
 RUN apt-get update && apt-get install -y \
     git \
     cmake \
@@ -47,6 +50,8 @@ RUN wget https://capnproto.org/capnproto-c++-1.0.2.tar.gz \
 # Clone and build sv2-tp
 WORKDIR /sv2-tp
 RUN git clone https://github.com/stratum-mining/sv2-tp.git . \
+    && echo "Checking out sv2-tp commit: ${SV2_TP_COMMIT}" \
+    && git checkout ${SV2_TP_COMMIT} \
     && git submodule update --init --recursive \
     && mkdir build \
     && cd build \

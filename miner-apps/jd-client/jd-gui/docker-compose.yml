@@ -78,6 +78,8 @@ services:
     build:
       context: ../../..  # sv2-apps root (relative path)
       dockerfile: miner-apps/jd-client/jd-gui/backend/Dockerfile
+      args:
+        SV2_TP_COMMIT: ${SV2_TP_COMMIT:-f4dfc9ed004cb455e3f5e99f4b533e583b3d3dd3}
     container_name: sv2-jd-gui
     ports:
       - "3000:5000"
