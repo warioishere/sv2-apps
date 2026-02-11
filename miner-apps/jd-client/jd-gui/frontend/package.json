@@ -1,6 +1,6 @@
 {
   "name": "jd-gui-frontend",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Frontend for JD-Client Web GUI Manager",
   "type": "module",
   "scripts": {

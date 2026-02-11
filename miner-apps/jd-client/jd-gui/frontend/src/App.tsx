@@ -68,7 +68,7 @@ function App() {
       </main>
 
       <footer className="app-footer">
-        <p>JD-Client Web GUI Manager v1.0.0</p>
+        <p>JD-Client Web GUI Manager v0.1.0</p>
       </footer>
     </div>
   );

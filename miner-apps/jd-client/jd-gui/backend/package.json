@@ -1,6 +1,6 @@
 {
   "name": "jd-gui-backend",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Backend API for JD-Client Web GUI Manager",
   "main": "dist/index.js",
   "scripts": {
