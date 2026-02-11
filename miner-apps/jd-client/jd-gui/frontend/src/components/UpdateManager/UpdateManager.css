@@ -81,6 +81,30 @@
   font-size: 14px;
 }
 
+.update-current {
+  padding: 16px;
+  background: #d1fae5;
+  border-left: 4px solid #22c55e;
+  border-radius: 6px;
+}
+
+.update-badge-success {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #22c55e;
+  color: white;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.update-current p {
+  margin: 8px 0 0 0;
+  color: #15803d;
+  font-size: 14px;
+}
+
 .update-controls {
   display: flex;
   gap: 12px;

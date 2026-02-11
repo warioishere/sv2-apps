@@ -199,6 +199,13 @@ export function UpdateManager() {
             <p>A new version of JD-Client is available. Update to get the latest features and fixes.</p>
           </div>
         )}
+
+        {!updateAvailable && !checking && currentVersion && !status.inProgress && (
+          <div className="update-current">
+            <span className="update-badge-success">✓ Up to date</span>
+            <p>You are running the latest version. No updates available.</p>
+          </div>
+        )}
       </div>
 
       <div className="update-controls">
