@@ -5,45 +5,65 @@ RPC_USER="${RPC_USER:-stratum}"
 RPC_PASSWORD="${RPC_PASSWORD:-stratum123}"
 NETWORK="${NETWORK:-mainnet}"
 
-BITCOIN_OPTS=(
-    "-server=1"
-    "-rpcuser=$RPC_USER"
-    "-rpcpassword=$RPC_PASSWORD"
-    "-rpcallowip=0.0.0.0/0"
-    "-rpcbind=0.0.0.0"
-    "-prune=550"
-    "-txindex=0"
-    "-zmqpubhashblock=tcp://0.0.0.0:28332"
-    "-ipcbind=unix:/home/bitcoin/.bitcoin/ipc/node.sock"
-)
-
-case "$NETWORK" in
-    mainnet)
-        BITCOIN_OPTS+=("-chain=main")
-        ;;
-    testnet4)
-        BITCOIN_OPTS+=("-chain=testnet4")
-        ;;
-    testnet)
-        BITCOIN_OPTS+=("-chain=test")
-        ;;
-    signet)
-        BITCOIN_OPTS+=("-chain=signet")
-        ;;
-    regtest)
-        BITCOIN_OPTS+=("-chain=regtest")
-        BITCOIN_OPTS+=("-fallbackfee=0.00001")
-        ;;
-    *)
-        echo "Unknown network: $NETWORK"
-        exit 1
-        ;;
-esac
-
-if [ "$(id -u)" = '0' ]; then
-    mkdir -p /home/bitcoin/.bitcoin/ipc
-    chown -R bitcoin:bitcoin /home/bitcoin
-    exec gosu bitcoin bitcoin-node "${BITCOIN_OPTS[@]}" "$@"
+# Determine config file path based on network
+if [ "$NETWORK" = "mainnet" ]; then
+    CONF_FILE="/home/bitcoin/.bitcoin/bitcoin.conf"
+else
+    CONF_FILE="/home/bitcoin/.bitcoin/$NETWORK/bitcoin.conf"
 fi
 
-exec bitcoin-node "${BITCOIN_OPTS[@]}" "$@"
+# Setup as root
+if [ "$(id -u)" = '0' ]; then
+    mkdir -p /home/bitcoin/.bitcoin/ipc
+
+    # Create network-specific directory if needed
+    if [ "$NETWORK" != "mainnet" ]; then
+        mkdir -p "/home/bitcoin/.bitcoin/$NETWORK"
+    fi
+
+    # Create default bitcoin.conf if it doesn't exist
+    if [ ! -f "$CONF_FILE" ]; then
+        echo "Creating default bitcoin.conf at $CONF_FILE..."
+        cat > "$CONF_FILE" <<EOF
+# Bitcoin Core Configuration
+# Network: $NETWORK
+# Created by entrypoint.sh
+
+# Server settings
+server=1
+
+# RPC settings
+rpcuser=$RPC_USER
+rpcpassword=$RPC_PASSWORD
+rpcallowip=0.0.0.0/0
+rpcbind=0.0.0.0
+
+# IPC settings (required for Template Provider)
+ipcbind=unix:/home/bitcoin/.bitcoin/ipc/node.sock
+
+# Performance settings
+prune=550
+txindex=0
+dbcache=450
+maxmempool=300
+
+# ZMQ settings
+zmqpubhashblock=tcp://0.0.0.0:28332
+
+# Network
+$(if [ "$NETWORK" = "mainnet" ]; then echo "chain=main"; else echo "chain=$NETWORK"; fi)
+
+# Additional settings (edit via GUI)
+EOF
+
+        # Add regtest-specific settings
+        if [ "$NETWORK" = "regtest" ]; then
+            echo "fallbackfee=0.00001" >> "$CONF_FILE"
+        fi
+    fi
+
+    chown -R bitcoin:bitcoin /home/bitcoin
+    exec gosu bitcoin bitcoin-node "-conf=$CONF_FILE" "$@"
+fi
+
+exec bitcoin-node "-conf=$CONF_FILE" "$@"

@@ -190,3 +190,106 @@ export async function getBitcoinCoreLogs(req: Request, res: Response): Promise<v
     res.status(500).json({ success: false, message: errorMessage });
   }
 }
+
+/**
+ * Restart Bitcoin Core container
+ */
+export async function restartBitcoinCore(req: Request, res: Response): Promise<void> {
+  try {
+    const { network } = req.body;
+
+    if (!network || !['mainnet', 'testnet'].includes(network)) {
+      res.status(400).json({ success: false, message: 'Invalid network. Must be mainnet or testnet' });
+      return;
+    }
+
+    logger.info(`Requesting Bitcoin Core ${network} restart via bc-manager...`);
+
+    // Call bc-manager API
+    const response = await axios.post(`${BC_MANAGER_URL}/bitcoin/restart`, { network });
+
+    if (response.data.success) {
+      logger.info(`Bitcoin Core ${network} restarted successfully`);
+      res.json(response.data);
+    } else {
+      logger.error(`Failed to restart Bitcoin Core ${network}: ${response.data.error}`);
+      res.status(500).json(response.data);
+    }
+
+  } catch (error) {
+    const err = error as any;
+    const errorMessage = err.response?.data?.error || err.message;
+    logger.error(`Failed to restart Bitcoin Core: ${errorMessage}`);
+    res.status(500).json({ success: false, message: errorMessage });
+  }
+}
+
+/**
+ * Get bitcoin.conf content
+ */
+export async function getBitcoinConfig(req: Request, res: Response): Promise<void> {
+  try {
+    const { network } = req.query;
+
+    if (!network || !['mainnet', 'testnet'].includes(network as string)) {
+      res.status(400).json({ success: false, message: 'Invalid network. Must be mainnet or testnet' });
+      return;
+    }
+
+    logger.info(`Fetching bitcoin.conf for ${network} via bc-manager...`);
+
+    // Call bc-manager API
+    const response = await axios.get(`${BC_MANAGER_URL}/bitcoin/config`, {
+      params: { network }
+    });
+
+    res.json(response.data);
+
+  } catch (error) {
+    const err = error as any;
+    const errorMessage = err.response?.data?.error || err.message;
+    logger.error(`Failed to get bitcoin.conf: ${errorMessage}`);
+    res.status(500).json({ success: false, message: errorMessage });
+  }
+}
+
+/**
+ * Update bitcoin.conf content
+ */
+export async function updateBitcoinConfig(req: Request, res: Response): Promise<void> {
+  try {
+    const { network, config } = req.body;
+
+    if (!network || !['mainnet', 'testnet'].includes(network)) {
+      res.status(400).json({ success: false, message: 'Invalid network. Must be mainnet or testnet' });
+      return;
+    }
+
+    if (!config || typeof config !== 'string') {
+      res.status(400).json({ success: false, message: 'Config content is required' });
+      return;
+    }
+
+    logger.info(`Updating bitcoin.conf for ${network} via bc-manager...`);
+
+    // Call bc-manager API
+    const response = await axios.post(`${BC_MANAGER_URL}/bitcoin/config`, {
+      network,
+      config
+    });
+
+    if (response.data.success) {
+      logger.info(`bitcoin.conf for ${network} updated successfully`);
+      res.json(response.data);
+    } else {
+      logger.error(`Failed to update bitcoin.conf for ${network}: ${response.data.error}`);
+      res.status(500).json(response.data);
+    }
+
+  } catch (error) {
+    const err = error as any;
+    const errorMessage = err.response?.data?.error || err.message;
+    logger.error(`Failed to update bitcoin.conf: ${errorMessage}`);
+    res.status(500).json({ success: false, message: errorMessage });
+  }
+}

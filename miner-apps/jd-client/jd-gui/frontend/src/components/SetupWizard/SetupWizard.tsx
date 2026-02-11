@@ -258,7 +258,9 @@ export function SetupWizard() {
                 <div className="option-subtitle">On this server with IPC enabled</div>
                 <div className="option-desc">
                   This GUI will detect your Bitcoin Core installation and configure JD-Client to use it.
-                  Requires Bitcoin Core 30+ with <code>-ipcbind=unix</code> enabled.
+                  <br/><br/>
+                  ⚠️ <strong>Requires Bitcoin Core 30+ built with <code>--enable-multiprocess</code></strong> and started with <code>-ipcbind=unix</code>.
+                  Standard Bitcoin Core binaries do NOT have IPC support.
                 </div>
               </button>
             </div>

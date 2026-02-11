@@ -78,15 +78,18 @@ export class ConfigExamplesService {
 
   // Get list of all examples
   getAllExamples(): ConfigExample[] {
-    return this.examples.map(ex => ({
-      id: ex.id,
-      name: ex.name,
-      network: ex.network,
-      infrastructure: ex.infrastructure,
-      templateProvider: ex.templateProvider,
-      description: ex.description,
-      filePath: '', // Don't expose file path in list
-    }));
+    // Filter out BitcoinCoreIpc presets - this GUI uses sv2-tp as intermediary
+    return this.examples
+      .filter(ex => ex.templateProvider === 'Sv2Tp')
+      .map(ex => ({
+        id: ex.id,
+        name: ex.name,
+        network: ex.network,
+        infrastructure: ex.infrastructure,
+        templateProvider: ex.templateProvider,
+        description: ex.description,
+        filePath: '', // Don't expose file path in list
+      }));
   }
 
   // Get raw TOML content

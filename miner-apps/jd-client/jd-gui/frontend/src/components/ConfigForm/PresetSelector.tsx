@@ -68,77 +68,46 @@ export function PresetSelector({ onLoadPreset }: PresetSelectorProps) {
 
       <div className="preset-guide">
         <details>
-          <summary>ℹ️ Which preset should I choose?</summary>
+          <summary>Which preset should I choose?</summary>
           <div className="preset-help">
-            <h4>Network:</h4>
-            <ul>
-              <li><strong>Testnet4</strong> - Recommended for learning/testing (free test coins, no real money)</li>
-              <li><strong>Mainnet</strong> - Production Bitcoin mining (requires real setup and costs)</li>
-              <li><strong>Signet</strong> - Controlled test network for developers</li>
-            </ul>
-
-            <h4>Infrastructure:</h4>
-            <ul>
-              <li><strong>Hosted</strong> - Use public pool/JDS servers (easiest, just connect and mine)</li>
-              <li><strong>Local</strong> - Run your own pool/JDS infrastructure (advanced, requires additional setup)</li>
-            </ul>
-
-            <h4>Template Provider:</h4>
-            <ul>
-              <li>
-                <strong>Sv2 TP</strong> - Stratum V2 Template Provider server
-                <ul style={{ marginTop: '4px', fontSize: '12px' }}>
-                  <li>✅ Works over network (can be remote)</li>
-                  <li>✅ Separate server process that connects to Bitcoin Core</li>
-                  <li>✅ Easiest option - no Bitcoin Core setup required on your side</li>
-                  <li>💡 Recommended for most users!</li>
-                </ul>
-              </li>
-              <li>
-                <strong>Bitcoin Core</strong> - Bitcoin Core IPC configuration
-                <ul style={{ marginTop: '4px', fontSize: '12px' }}>
-                  <li>⚠️ Requires Bitcoin Core 30+ compiled with SV2 patches</li>
-                  <li>⚠️ Official Bitcoin Core 30 has IPC but NOT full SV2 support</li>
-                  <li>⚠️ Still experimental - use sv2-apps custom build</li>
-                  <li>⚠️ Local machine only (IPC cannot work over network)</li>
-                  <li>💡 Advanced users only</li>
-                </ul>
-              </li>
-            </ul>
-
-            <h4>If you have your own Bitcoin Core node:</h4>
-            <ul>
-              <li>
-                <strong>Bitcoin Core on same machine as JD-Client:</strong>
-                <ul style={{ marginTop: '4px', fontSize: '12px' }}>
-                  <li>⚠️ Still need separate Template Provider process</li>
-                  <li>⚠️ Template Provider → [IPC] → Bitcoin Core (local)</li>
-                  <li>⚠️ JD-Client → [network] → Template Provider</li>
-                  <li>💡 Use "Sv2 TP" preset, run template provider locally</li>
-                </ul>
-              </li>
-              <li>
-                <strong>Bitcoin Core on another machine:</strong>
-                <ul style={{ marginTop: '4px', fontSize: '12px' }}>
-                  <li>❌ IPC does NOT work over network</li>
-                  <li>✅ Run Template Provider on same machine as Bitcoin Core</li>
-                  <li>✅ Template Provider uses IPC to connect to Bitcoin Core locally</li>
-                  <li>✅ JD-Client connects to Template Provider over network</li>
-                  <li>💡 Use "Sv2 TP" preset</li>
-                </ul>
-              </li>
-            </ul>
-
-            <p style={{ marginTop: '16px', padding: '12px', background: '#fef3c7', borderLeft: '3px solid #f59e0b', borderRadius: '4px', fontSize: '13px' }}>
-              <strong>⚠️ Note:</strong> Bitcoin Core 30 official binary has experimental IPC interface but NOT full Stratum V2 support.
-              For production use, you need either: (1) Custom Bitcoin Core build with SV2 patches, or (2) Hosted template provider service.
+            <p style={{ padding: '12px', background: '#f3f4f6', borderLeft: '3px solid #6b7280', borderRadius: '4px', fontSize: '13px', marginBottom: '16px' }}>
+              <strong>For automated setup, use the Setup Wizard tab instead.</strong><br/>
+              Presets are for manual configuration only.
             </p>
 
-            <p className="preset-recommendation">
-              <strong>👉 Recommended for beginners:</strong> "Testnet4 - Hosted - Sv2 TP"<br/>
-              <span style={{ fontSize: '12px', fontWeight: 'normal' }}>
-                (No Bitcoin Core needed - uses public test infrastructure)
-              </span>
+            <h4>Available Presets:</h4>
+
+            <ul style={{ fontSize: '13px', lineHeight: '1.6' }}>
+              <li style={{ marginBottom: '12px' }}>
+                <strong>[Network] - Hosted - Sv2 TP</strong>
+                <ul style={{ marginTop: '4px', fontSize: '12px' }}>
+                  <li>Architecture: JD-Client → Public Template Provider → Public Pool/JDS</li>
+                  <li>Use for: Quick testing with hosted infrastructure</li>
+                  <li>Bitcoin Core not required</li>
+                </ul>
+              </li>
+
+              <li style={{ marginBottom: '12px' }}>
+                <strong>[Network] - Local - Sv2 TP</strong>
+                <ul style={{ marginTop: '4px', fontSize: '12px' }}>
+                  <li>Architecture: JD-Client → sv2-tp → Bitcoin Core (IPC)</li>
+                  <li>Use for: This GUI's full stack with integrated or own Bitcoin Core</li>
+                  <li>sv2-tp handles the Bitcoin Core IPC connection</li>
+                </ul>
+              </li>
+            </ul>
+
+            <h4 style={{ marginTop: '20px' }}>Network Options:</h4>
+            <ul style={{ fontSize: '12px' }}>
+              <li><strong>Mainnet</strong> - Production Bitcoin network</li>
+              <li><strong>Testnet4</strong> - Bitcoin test network (free test coins)</li>
+              <li><strong>Signet</strong> - Predictable test network</li>
+            </ul>
+
+            <p style={{ padding: '12px', background: '#fef3c7', borderLeft: '3px solid #f59e0b', borderRadius: '4px', fontSize: '13px', marginTop: '16px' }}>
+              <strong>If you have your own Bitcoin Core node built with --enable-multiprocess:</strong><br/>
+              Use preset: <strong>[Network] - Local - Sv2 TP</strong><br/>
+              This configures JD-Client to connect to sv2-tp, which you'll configure separately to connect to your Bitcoin Core.
             </p>
           </div>
         </details>

@@ -115,6 +115,76 @@ class ApiService {
     const response = await axios.get(`${API_BASE}/tp/logs?count=${count}`);
     return response.data;
   }
+
+  // Bitcoin Core endpoints
+  async getBitcoinCoreStatus(): Promise<{
+    running: boolean;
+    building?: boolean;
+    message?: string;
+    network?: 'mainnet' | 'testnet';
+    container?: string;
+    blockHeight?: number;
+    connections?: number;
+    initialSync?: boolean;
+  }> {
+    const response = await axios.get(`${API_BASE}/bitcoin/status`);
+    return response.data;
+  }
+
+  async startBitcoinCore(network: 'mainnet' | 'testnet'): Promise<{
+    success: boolean;
+    message?: string;
+    building?: boolean;
+    error?: string;
+  }> {
+    const response = await axios.post(`${API_BASE}/bitcoin/start`, { network });
+    return response.data;
+  }
+
+  async stopBitcoinCore(network: 'mainnet' | 'testnet'): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    const response = await axios.post(`${API_BASE}/bitcoin/stop`, { network });
+    return response.data;
+  }
+
+  async restartBitcoinCore(network: 'mainnet' | 'testnet'): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    const response = await axios.post(`${API_BASE}/bitcoin/restart`, { network });
+    return response.data;
+  }
+
+  async getBitcoinCoreLogs(network: 'mainnet' | 'testnet', lines: number = 100): Promise<{
+    success: boolean;
+    logs?: string;
+    error?: string;
+  }> {
+    const response = await axios.get(`${API_BASE}/bitcoin/logs?network=${network}&lines=${lines}`);
+    return response.data;
+  }
+
+  async getBitcoinConfig(network: 'mainnet' | 'testnet'): Promise<{
+    success: boolean;
+    config?: string;
+    error?: string;
+  }> {
+    const response = await axios.get(`${API_BASE}/bitcoin/config?network=${network}`);
+    return response.data;
+  }
+
+  async updateBitcoinConfig(network: 'mainnet' | 'testnet', config: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    const response = await axios.post(`${API_BASE}/bitcoin/config`, { network, config });
+    return response.data;
+  }
 }
 
 export const apiService = new ApiService();

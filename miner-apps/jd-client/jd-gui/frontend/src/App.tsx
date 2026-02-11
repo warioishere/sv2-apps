@@ -5,9 +5,10 @@ import { LogViewer } from './components/LogViewer/LogViewer';
 import { SetupWizard } from './components/SetupWizard/SetupWizard';
 import { UpdateManager } from './components/UpdateManager/UpdateManager';
 import { TemplateProviderPanel } from './components/TemplateProviderPanel/TemplateProviderPanel';
+import { BitcoinCore } from './components/BitcoinCore/BitcoinCore';
 import './App.css';
 
-type View = 'wizard' | 'config' | 'logs' | 'updates' | 'template-provider';
+type View = 'wizard' | 'config' | 'logs' | 'bitcoin-core' | 'template-provider' | 'updates';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('wizard');
@@ -39,10 +40,16 @@ function App() {
           Logs
         </button>
         <button
+          className={currentView === 'bitcoin-core' ? 'active' : ''}
+          onClick={() => setCurrentView('bitcoin-core')}
+        >
+          Bitcoin Core
+        </button>
+        <button
           className={currentView === 'template-provider' ? 'active' : ''}
           onClick={() => setCurrentView('template-provider')}
         >
-          📡 Template Provider
+          Template Provider
         </button>
         <button
           className={currentView === 'updates' ? 'active' : ''}
@@ -58,6 +65,7 @@ function App() {
         {currentView === 'wizard' && <SetupWizard />}
         {currentView === 'config' && <ConfigForm />}
         {currentView === 'logs' && <LogViewer />}
+        {currentView === 'bitcoin-core' && <BitcoinCore />}
         {currentView === 'template-provider' && <TemplateProviderPanel />}
         {currentView === 'updates' && <UpdateManager />}
       </main>
