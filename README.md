@@ -144,7 +144,7 @@ Uses the official C++ implementation from [stratum-mining/sv2-tp](https://github
 
 ```bash
 # Clone this fork
-git clone https://github.com/YOUR-USERNAME/sv2-apps.git
+git clone https://github.com/warioishere/sv2-apps.git
 cd sv2-apps
 
 # Switch to experimental branch
@@ -212,13 +212,15 @@ git merge main
 
 ## Status: Experimental
 
-🚧 **This is NOT production-ready software**
+🚧 **This is NOT yet production-ready software**
 
 **Expect**:
-- Breaking changes without notice
+- Breaking changes
 - Bugs and rough edges
 - Incomplete documentation
 - Evolving architecture
+- future updates if bitcoincore supports IPC per default
+- removal of the separate tp provider
 
 **This is for**:
 - Developers experimenting with Stratum V2
