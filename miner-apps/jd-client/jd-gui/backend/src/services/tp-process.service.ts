@@ -25,7 +25,7 @@ export class TpProcessManager extends EventEmitter {
   private readonly binaryPath: string;
   private readonly configPath: string;
 
-  constructor(binaryPath: string = '/app/sv2-tp', configPath: string = '/app/config/sv2-tp/sv2-tp.toml') {
+  constructor(binaryPath: string = '/app/sv2-tp', configPath: string = '/app/config/sv2-tp/sv2-tp.conf') {
     super();
     this.binaryPath = binaryPath;
     this.configPath = configPath;
@@ -44,12 +44,31 @@ export class TpProcessManager extends EventEmitter {
         return;
       }
 
-      logger.info(`Starting sv2-tp: ${this.binaryPath} -conf=${this.configPath}`);
+      // sv2-tp tries to write sv2-debug.log in datadir, which may be read-only.
+      // We always redirect to a writable location to avoid StartLogging failures.
+      const writableLogDir = '/app/data/sv2-tp';
+      const writableLogFile = path.join(writableLogDir, 'sv2-debug.log');
+      try {
+        if (!fs.existsSync(writableLogDir)) {
+          fs.mkdirSync(writableLogDir, { recursive: true });
+        }
+        // Pre-create the log file so sv2-tp's fopen("a") succeeds
+        fs.writeFileSync(writableLogFile, '', { flag: 'a' });
+      } catch (e) {
+        logger.warn(`Could not create writable log dir: ${(e as Error).message}`);
+      }
+
+      const args = [
+        `-conf=${this.configPath}`,
+        '-printtoconsole',
+        `-debuglogfile=${writableLogFile}`,
+        `-pid=${writableLogDir}/sv2-tp.pid`,
+      ];
+
+      logger.info(`Starting sv2-tp: ${this.binaryPath} ${args.join(' ')}`);
 
       try {
-        // Use -conf=<path> (single dash) per sv2-tp documentation
-        // Using -conf=0 would disable default config loading, but we'll provide the path
-        this.process = spawn(this.binaryPath, [`-conf=${this.configPath}`], {
+        this.process = spawn(this.binaryPath, args, {
           cwd: '/app',
           env: {
             ...process.env,

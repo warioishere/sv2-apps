@@ -206,8 +206,8 @@ export async function generateFullStackConfig(req: Request, res: Response): Prom
 # Bitcoin Core data directory (where node.sock IPC socket is located)
 datadir=${finalBitcoinCoreDataDir}
 
-# Network (mainnet, testnet, testnet4, signet, regtest)
-chain=${network === 'testnet4' ? 'testnet' : network}
+# Network (main, test, signet, regtest)
+chain=${network === 'mainnet' ? 'main' : network === 'testnet4' ? 'test' : network}
 
 # Connect to Bitcoin Core via IPC (Unix socket)
 ipcconnect=unix
@@ -221,7 +221,8 @@ sv2interval=30
 # Fee delta (sats/vB) - minimum fee rate threshold
 sv2feedelta=1000
 
-# Logging
+# Logging (printtoconsole avoids needing writable datadir for sv2-debug.log)
+printtoconsole=1
 debug=sv2
 loglevel=sv2:info
 debug=ipc

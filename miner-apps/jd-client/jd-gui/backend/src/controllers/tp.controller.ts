@@ -43,8 +43,8 @@ export class TpController {
 # Bitcoin Core data directory (where node.sock IPC socket is located)
 datadir=${bitcoinDataDir}
 
-# Network (mainnet, testnet, testnet4, signet, regtest)
-chain=${network}
+# Network (main, test, signet, regtest)
+chain=${network === 'mainnet' ? 'main' : network === 'testnet' ? 'test' : network}
 
 # Connect to Bitcoin Core via IPC (Unix socket)
 ipcconnect=unix
@@ -58,7 +58,8 @@ sv2interval=30
 # Fee delta (sats/vB) - minimum fee rate threshold
 sv2feedelta=1000
 
-# Logging
+# Logging (printtoconsole avoids needing writable datadir for sv2-debug.log)
+printtoconsole=1
 debug=sv2
 loglevel=sv2:info
 debug=ipc
@@ -233,6 +234,86 @@ debug=ipc
       res.status(500).json({
         success: false,
         error: err.message
+      });
+    }
+  }
+
+  async restoreDefaultConfig(req: Request, res: Response) {
+    try {
+      logger.info('Restoring default sv2-tp config based on running Bitcoin Core');
+
+      // Detect which Bitcoin Core is running
+      let bitcoinDataDir = '/bitcoin-ipc-mainnet';
+      let chain = 'main';
+      let network = 'mainnet';
+
+      const detectionPaths = [
+        { path: '/bitcoin-ipc-mainnet/node.sock', dataDir: '/bitcoin-ipc-mainnet', chain: 'main', network: 'mainnet' },
+        { path: '/bitcoin-ipc-testnet/node.sock', dataDir: '/bitcoin-ipc-testnet', chain: 'test', network: 'testnet4' },
+        { path: '/host-bitcoin/mainnet/node.sock', dataDir: '/host-bitcoin/mainnet', chain: 'main', network: 'mainnet' },
+        { path: '/host-bitcoin/testnet4/node.sock', dataDir: '/host-bitcoin/testnet4', chain: 'test', network: 'testnet4' },
+      ];
+
+      for (const check of detectionPaths) {
+        if (fs.existsSync(check.path)) {
+          bitcoinDataDir = check.dataDir;
+          chain = check.chain;
+          network = check.network;
+          logger.info(`Detected Bitcoin Core: ${network} at ${check.path}`);
+          break;
+        }
+      }
+
+      const defaultConfig = `# Stratum V2 Template Provider Configuration
+# Auto-generated default configuration
+# Network: ${network}
+
+# Bitcoin Core data directory (where node.sock IPC socket is located)
+datadir=${bitcoinDataDir}
+
+# Network (main, test, signet, regtest)
+chain=${chain}
+
+# Connect to Bitcoin Core via IPC (Unix socket)
+ipcconnect=unix
+
+# Template Provider listening address (where JD-Client connects)
+sv2bind=0.0.0.0:48442
+
+# Stratum V2 interval (seconds) - how often to check for new templates
+sv2interval=30
+
+# Fee delta (sats/vB) - minimum fee rate threshold
+sv2feedelta=1000
+
+# Logging
+printtoconsole=1
+debug=sv2
+loglevel=sv2:info
+debug=ipc
+`;
+
+      const configDir = path.dirname(TP_CONFIG_PATH);
+      if (!fs.existsSync(configDir)) {
+        fs.mkdirSync(configDir, { recursive: true });
+      }
+      fs.writeFileSync(TP_CONFIG_PATH, defaultConfig);
+      logger.info(`Restored default sv2-tp config at ${TP_CONFIG_PATH} (${network})`);
+
+      res.json({
+        success: true,
+        config: defaultConfig,
+        network,
+        chain,
+        path: TP_CONFIG_PATH,
+        message: `Configuration restored to defaults for ${network}`,
+      });
+    } catch (error) {
+      const err = error as Error;
+      logger.error(`Error restoring default config: ${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: err.message,
       });
     }
   }

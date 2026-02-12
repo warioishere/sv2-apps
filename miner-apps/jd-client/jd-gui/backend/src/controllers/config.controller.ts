@@ -119,9 +119,15 @@ export class ConfigController {
       }
 
       const toml = fs.readFileSync(configPath, 'utf8');
+
+      // Also get the config from database for wizard pre-fill
+      const activeConfig = configService.getActiveConfiguration();
+      const config = activeConfig ? configService.parseConfig(activeConfig) : null;
+
       res.json({
         success: true,
-        toml
+        toml,
+        config
       });
     } catch (error) {
       const err = error as Error;

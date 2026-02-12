@@ -41,8 +41,9 @@ export function TpConfig() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [pathValidation, setPathValidation] = useState<PathValidationResult | null>(null);
   const [validatingPath, setValidatingPath] = useState(false);
-  const [activeTab, setActiveTab] = useState<'form' | 'raw'>('form');
+  const [activeTab, setActiveTab] = useState<'form' | 'raw' | 'logs'>('form');
   const [rawConfig, setRawConfig] = useState<string>('');
+  const [logs, setLogs] = useState<string>('');
 
   // Auto-detect Bitcoin Core network on mount
   useEffect(() => {
@@ -74,6 +75,28 @@ export function TpConfig() {
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Auto-refresh logs when running and logs tab is active
+  useEffect(() => {
+    if (status.running && activeTab === 'logs') {
+      fetchLogs();
+      const interval = setInterval(fetchLogs, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [status.running, activeTab]);
+
+  const fetchLogs = async () => {
+    try {
+      const response = await fetch('/api/tp/logs?count=100');
+      const result = await response.json();
+      if (result.logs && Array.isArray(result.logs)) {
+        const logsText = result.logs.map((log: any) => log.message).join('\n');
+        setLogs(logsText);
+      }
+    } catch (error) {
+      console.error('Failed to fetch logs:', error);
+    }
+  };
 
   // Load raw config when switching to raw tab
   useEffect(() => {
@@ -278,6 +301,30 @@ export function TpConfig() {
     }
   };
 
+  const handleRestoreDefaults = async () => {
+    if (!confirm('Restore configuration to defaults based on running Bitcoin Core network?')) {
+      return;
+    }
+    setLoading(true);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/tp/config/restore', { method: 'POST' });
+      const result = await response.json();
+      if (result.success) {
+        setMessage({ type: 'success', text: `${result.message} (${result.chain})` });
+        setRawConfig(result.config);
+        // Reload form fields from restored config
+        await loadCurrentConfig();
+      } else {
+        setMessage({ type: 'error', text: `Failed to restore: ${result.error}` });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: `Error restoring config: ${(error as Error).message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleStart = async () => {
     setLoading(true);
     try {
@@ -303,19 +350,20 @@ export function TpConfig() {
     switch (config.bitcoin_source) {
       case 'integrated-mainnet':
         bitcoinDataDir = '/bitcoin-ipc-mainnet';
-        chain = 'mainnet';
+        chain = 'main';
         break;
       case 'integrated-testnet':
         bitcoinDataDir = '/bitcoin-ipc-testnet';
-        chain = 'testnet';
+        chain = 'test';
         break;
       case 'host-custom':
         bitcoinDataDir = config.custom_path || '/host-bitcoin/mainnet';
-        chain = config.network;
+        // Convert network names to chain values
+        chain = config.network === 'mainnet' ? 'main' : config.network === 'testnet' ? 'test' : config.network;
         break;
       default:
         bitcoinDataDir = '/bitcoin-ipc-testnet';
-        chain = 'testnet';
+        chain = 'test';
     }
 
     return `# Stratum V2 Template Provider Configuration
@@ -325,7 +373,7 @@ export function TpConfig() {
 # Bitcoin Core data directory (where node.sock IPC socket is located)
 datadir=${bitcoinDataDir}
 
-# Network (mainnet, testnet, testnet4, signet, regtest)
+# Network (main, test, signet, regtest)
 chain=${chain}
 
 # Connect to Bitcoin Core via IPC (Unix socket)
@@ -340,7 +388,8 @@ sv2interval=${config.fee_check_interval}
 # Fee delta (sats/vB) - minimum fee rate threshold
 sv2feedelta=${config.min_fee_rate}
 
-# Logging
+# Logging (printtoconsole avoids needing writable datadir for sv2-debug.log)
+printtoconsole=1
 debug=sv2
 loglevel=sv2:${config.log_level}
 debug=ipc
@@ -358,20 +407,75 @@ debug=ipc
     }
   };
 
+  const handleStop = async () => {
+    setLoading(true);
+    try {
+      const result = await apiService.stopTp();
+      if (result.success) {
+        setMessage({ type: 'success', text: 'Template Provider stopped successfully!' });
+        await fetchStatus();
+      } else {
+        setMessage({ type: 'error', text: `Failed to stop: ${result.error}` });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: `Error stopping Template Provider: ${(error as Error).message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    setLoading(true);
+    try {
+      const result = await apiService.restartTp();
+      if (result.success) {
+        setMessage({ type: 'success', text: 'Template Provider restarted successfully!' });
+        await fetchStatus();
+      } else {
+        setMessage({ type: 'error', text: `Failed to restart: ${result.error}` });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: `Error restarting Template Provider: ${(error as Error).message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="tp-config">
       <div className="tp-config-header">
-        <h2>Template Provider Configuration</h2>
+        <h2>Template Provider</h2>
         <div className={`status-badge ${status.running ? 'running' : 'stopped'}`}>
           {status.running ? 'Running' : 'Stopped'}
         </div>
       </div>
 
-      {loading && !saving && (
-        <div className="loading-indicator">
-          Loading configuration...
-        </div>
-      )}
+      {/* Control Buttons */}
+      <div className="control-buttons">
+        <button
+          onClick={handleStart}
+          disabled={status.running || loading}
+          className="btn btn-success"
+        >
+          {loading ? 'Starting...' : 'Start'}
+        </button>
+
+        <button
+          onClick={handleStop}
+          disabled={!status.running || loading}
+          className="btn btn-danger"
+        >
+          {loading ? 'Stopping...' : 'Stop'}
+        </button>
+
+        <button
+          onClick={handleRestart}
+          disabled={loading}
+          className="btn btn-warning"
+        >
+          {loading ? 'Restarting...' : 'Restart'}
+        </button>
+      </div>
 
       {message && (
         <div className={`message ${message.type}`}>
@@ -394,19 +498,34 @@ debug=ipc
         >
           Raw Configuration (sv2-tp.conf)
         </button>
+        <button
+          className={`tab ${activeTab === 'logs' ? 'active' : ''}`}
+          onClick={() => { setActiveTab('logs'); fetchLogs(); }}
+        >
+          Logs
+        </button>
       </div>
 
-      {activeTab === 'raw' ? (
+      {activeTab === 'raw' && (
         <div className="config-editor-section">
           <div className="config-header">
             <h3>sv2-tp.conf Editor</h3>
-            <button
-              className="btn btn-primary"
-              onClick={saveRawConfig}
-              disabled={saving || status.running}
-            >
-              {saving ? 'Saving...' : 'Save Configuration'}
-            </button>
+            <div className="config-header-buttons">
+              <button
+                className="btn btn-secondary"
+                onClick={handleRestoreDefaults}
+                disabled={loading || status.running}
+              >
+                Restore Defaults
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={saveRawConfig}
+                disabled={saving || status.running}
+              >
+                {saving ? 'Saving...' : 'Save Configuration'}
+              </button>
+            </div>
           </div>
           <textarea
             className="config-editor"
@@ -422,7 +541,9 @@ debug=ipc
               : 'Note: Template Provider must be restarted for configuration changes to take effect.'}
           </p>
         </div>
-      ) : (
+      )}
+
+      {activeTab === 'form' && (
       <div className="config-form">
         {/* Bitcoin Core Source */}
         <div className="form-section">
@@ -646,7 +767,7 @@ debug=ipc
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Save / Restore Buttons */}
         <div className="form-actions">
           <button
             className="btn btn-primary btn-large"
@@ -655,15 +776,13 @@ debug=ipc
           >
             {saving ? 'Saving...' : 'Save Configuration'}
           </button>
-          {!status.running && (
-            <button
-              className="btn btn-success btn-large"
-              onClick={handleStart}
-              disabled={loading}
-            >
-              {loading ? 'Starting...' : 'Start Template Provider'}
-            </button>
-          )}
+          <button
+            className="btn btn-secondary"
+            onClick={handleRestoreDefaults}
+            disabled={loading || status.running}
+          >
+            Restore Defaults
+          </button>
           {status.running && (
             <div className="running-notice">
               Template Provider is running. Stop it to modify configuration.
@@ -671,6 +790,24 @@ debug=ipc
           )}
         </div>
       </div>
+      )}
+
+      {activeTab === 'logs' && (
+        <div className="logs-section">
+          <div className="logs-header">
+            <h3>Template Provider Logs</h3>
+            <button
+              className="btn btn-secondary"
+              onClick={fetchLogs}
+              disabled={loading}
+            >
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+          <div className="logs-container">
+            <pre className="logs-content">{logs || (status.running ? 'No logs yet...' : 'Template Provider is not running.')}</pre>
+          </div>
+        </div>
       )}
 
       <div className="info-box">
