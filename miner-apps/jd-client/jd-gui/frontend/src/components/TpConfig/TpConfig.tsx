@@ -44,6 +44,30 @@ export function TpConfig() {
   const [activeTab, setActiveTab] = useState<'form' | 'raw'>('form');
   const [rawConfig, setRawConfig] = useState<string>('');
 
+  // Auto-detect Bitcoin Core network on mount
+  useEffect(() => {
+    const detectBitcoinNetwork = async () => {
+      try {
+        const response = await fetch('/api/bitcoin/status');
+        const bitcoinStatus = await response.json();
+        if (bitcoinStatus.running && bitcoinStatus.network) {
+          const detectedNetwork = bitcoinStatus.network === 'testnet' ? 'testnet' : 'mainnet';
+          const bitcoinSource = detectedNetwork === 'mainnet' ? 'integrated-mainnet' : 'integrated-testnet';
+          console.log(`🔍 TpConfig: Auto-detected Bitcoin Core running on ${bitcoinStatus.network}, setting to ${bitcoinSource}`);
+          setConfig(prev => ({
+            ...prev,
+            bitcoin_source: bitcoinSource,
+            network: detectedNetwork
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to detect Bitcoin Core network:', error);
+      }
+    };
+
+    detectBitcoinNetwork();
+  }, []);
+
   useEffect(() => {
     loadCurrentConfig();
     fetchStatus();
@@ -84,7 +108,10 @@ export function TpConfig() {
       if (result.success && result.config) {
         // Parse the raw config and update form fields
         const parsedConfig = parseConfigFromRaw(result.config);
+        console.log('📄 TpConfig: Loaded saved config:', parsedConfig);
         setConfig(prev => ({ ...prev, ...parsedConfig }));
+      } else {
+        console.log('⚠️ TpConfig: No saved config found, using defaults/auto-detected network');
       }
     } catch (error) {
       console.error('Failed to load current config:', error);
