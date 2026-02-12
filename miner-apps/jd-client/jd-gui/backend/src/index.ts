@@ -14,6 +14,7 @@ import { initializeDatabase } from './database/schema';
 import { instanceManager } from './services/instance.service';
 import { healthService } from './health/health.service';
 import { metricsService } from './services/metrics.service';
+import { configController } from './controllers/config.controller';
 
 // Phase 1 routes
 import jdcRoutes from './routes/jdc.routes';
@@ -37,6 +38,10 @@ const PORT = process.env.PORT || 5000;
 // Initialize database
 initializeDatabase();
 logger.info('Database initialized');
+
+// Restore active configuration from database
+configController.restoreFromDatabase();
+logger.info('Configuration restore from database attempted');
 
 // Middleware
 app.use(cors({

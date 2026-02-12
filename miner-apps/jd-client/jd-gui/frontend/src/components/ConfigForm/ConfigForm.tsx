@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ConfigInput } from '../../types/config.types';
 import { apiService } from '../../services/api.service';
 import { PresetSelector } from './PresetSelector';
@@ -45,6 +45,34 @@ export function ConfigForm() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [bitcoinAddress, setBitcoinAddress] = useState<string>('');
+  const [loadingConfig, setLoadingConfig] = useState(true);
+
+  // Load existing configuration on mount
+  useEffect(() => {
+    const loadExistingConfig = async () => {
+      try {
+        const response = await fetch('/api/saved-configs/active');
+        if (response.ok) {
+          const result = await response.json();
+          if (result.config) {
+            setConfig(result.config);
+            // Extract Bitcoin address if present
+            if (result.config.coinbase_reward_script) {
+              const address = extractAddress(result.config.coinbase_reward_script);
+              setBitcoinAddress(address);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load existing config:', error);
+        // Keep default config if loading fails
+      } finally {
+        setLoadingConfig(false);
+      }
+    };
+
+    loadExistingConfig();
+  }, []);
 
   const updateConfig = (updates: Partial<ConfigInput>) => {
     setConfig({ ...config, ...updates });
@@ -141,6 +169,17 @@ export function ConfigForm() {
     { id: 'template' as TabId, label: 'Template Provider' },
     { id: 'advanced' as TabId, label: 'Advanced' },
   ];
+
+  if (loadingConfig) {
+    return (
+      <div className="config-form">
+        <div className="loading-screen" style={{ padding: '3rem', textAlign: 'center' }}>
+          <h2 style={{ color: '#3b82f6', marginBottom: '1rem' }}>Loading configuration...</h2>
+          <p style={{ color: '#6b7280' }}>Please wait</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="config-form">
@@ -412,9 +451,20 @@ export function ConfigForm() {
                   });
                 }}
               >
-                <option value="BitcoinCoreIpc">Bitcoin Core IPC</option>
-                <option value="Sv2Tp">Stratum V2 Template Provider</option>
+                <option value="Sv2Tp">SV2 Template Provider (sv2-tp) - Recommended</option>
+                <option value="BitcoinCoreIpc">Bitcoin Core IPC (Direct) - Experimental</option>
               </select>
+              <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#e7f3ff', border: '1px solid #2563eb', borderRadius: '6px', fontSize: '0.9rem', lineHeight: '1.5' }}>
+                <strong>📚 How it works:</strong><br/>
+                <strong style={{ color: '#2563eb' }}>Sv2Tp (Default):</strong> Miners → JD-Client → sv2-tp → Bitcoin Core (Unix socket)<br/>
+                • Most reliable for production<br/>
+                • sv2-tp handles template distribution efficiently<br/>
+                • Configure sv2-tp in the "Template Provider" tab<br/><br/>
+                <strong style={{ color: '#dc2626' }}>Bitcoin Core IPC:</strong> Miners → JD-Client → Bitcoin Core (direct)<br/>
+                • Simpler but experimental<br/>
+                • Bypasses sv2-tp<br/>
+                • Requires Bitcoin Core 30+ with --enable-multiprocess
+              </div>
             </div>
 
             {config.template_provider_type === 'Sv2Tp' && config.sv2_tp && (

@@ -191,7 +191,11 @@ export async function generateFullStackConfig(req: Request, res: Response): Prom
     // Standard bitcoin/bitcoin Docker images do NOT support IPC
     // Use our custom sv2-bitcoin-core-ipc image instead
 
-    // sv2-tp config format (TOML)
+    // Determine Bitcoin Core data directory path
+    const finalBitcoinCoreDataDir = bitcoinCoreDataDir ||
+      (network === 'mainnet' ? '/bitcoin-ipc-mainnet' : '/bitcoin-ipc-testnet');
+
+    // sv2-tp config format (Bitcoin Core style - key=value)
     const tpConfig = `# Stratum V2 Template Provider Configuration
 # Network: ${network}
 #
@@ -199,31 +203,32 @@ export async function generateFullStackConfig(req: Request, res: Response): Prom
 # Standard bitcoin/bitcoin images DO NOT have IPC support.
 # This setup uses custom sv2-bitcoin-core-ipc image with multiprocess enabled.
 
-[bitcoin_core]
-# Path to Bitcoin Core data directory containing IPC socket (node.sock)
-# sv2-tp connects to Bitcoin Core via IPC (Unix socket)
-datadir = "${bitcoinCoreDataDir || (network === 'mainnet' ? '/bitcoin-ipc-mainnet' : '/bitcoin-ipc-testnet')}"
+# Bitcoin Core data directory (where node.sock IPC socket is located)
+datadir=${finalBitcoinCoreDataDir}
 
-# Network (mainnet, testnet, signet, regtest)
-network = "${network === 'testnet4' ? 'testnet' : network}"
+# Network (mainnet, testnet, testnet4, signet, regtest)
+chain=${network === 'testnet4' ? 'testnet' : network}
 
-[template_provider]
-# Address where sv2-tp listens for JD-Client connections
-address = "0.0.0.0:48442"
+# Connect to Bitcoin Core via IPC (Unix socket)
+ipcconnect=unix
 
-# Fee check interval (seconds)
-fee_check_interval = 30
+# Template Provider listening address (where JD-Client connects)
+sv2bind=0.0.0.0:48442
 
-# Minimum fee threshold (sats/vB)
-min_fee_rate = 1000
+# Stratum V2 interval (seconds) - how often to check for new templates
+sv2interval=30
 
-[logging]
-# Log level: trace, debug, info, warn, error
-level = "info"
+# Fee delta (sats/vB) - minimum fee rate threshold
+sv2feedelta=1000
+
+# Logging
+debug=sv2
+loglevel=sv2:info
+debug=ipc
 `;
 
-    // Save sv2-tp config
-    const tpConfigPath = '/app/config/sv2-tp/sv2-tp.toml';
+    // Save sv2-tp config (Bitcoin Core style uses .conf extension)
+    const tpConfigPath = '/app/config/sv2-tp/sv2-tp.conf';
     const tpConfigDir = path.dirname(tpConfigPath);
     if (!fs.existsSync(tpConfigDir)) {
       fs.mkdirSync(tpConfigDir, { recursive: true });
@@ -232,6 +237,11 @@ level = "info"
     logger.info(`sv2-tp config saved to ${tpConfigPath}`);
 
     // ===== 2. Generate JD-Client config =====
+    // Wrap Bitcoin address in addr() format if provided
+    const coinbaseScript = coinbaseAddress && coinbaseAddress.trim()
+      ? `addr(${coinbaseAddress.trim()})`
+      : '';
+
     const jdcConfig: ConfigInput = {
       listening_address: '0.0.0.0:34265',  // Miners connect here
       max_supported_version: 2,
@@ -244,7 +254,7 @@ level = "info"
       share_batch_size: 10,
       mode: 'independent',
       jdc_signature: 'JD-Client with Full Transaction Control',
-      coinbase_reward_script: coinbaseAddress || '',
+      coinbase_reward_script: coinbaseScript,
       upstreams: [
         {
           authority_pubkey: authorityPubkey || '', // Pool's authority key

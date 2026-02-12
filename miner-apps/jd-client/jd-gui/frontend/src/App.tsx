@@ -1,16 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StatusPanel } from './components/StatusPanel/StatusPanel';
 import { ConfigForm } from './components/ConfigForm/ConfigForm';
 import { SetupWizard } from './components/SetupWizard/SetupWizard';
 import { UpdateManager } from './components/UpdateManager/UpdateManager';
-import { TemplateProviderPanel } from './components/TemplateProviderPanel/TemplateProviderPanel';
+import { TpConfig } from './components/TpConfig/TpConfig';
 import { BitcoinCore } from './components/BitcoinCore/BitcoinCore';
 import './App.css';
 
 type View = 'wizard' | 'status' | 'config' | 'bitcoin-core' | 'template-provider' | 'updates';
 
 function App() {
-  const [currentView, setCurrentView] = useState<View>('wizard');
+  const [currentView, setCurrentView] = useState<View>('status');
+  const [configExists, setConfigExists] = useState<boolean>(false);
+  const [checkingConfig, setCheckingConfig] = useState<boolean>(true);
+
+  // Check if configuration exists on mount
+  useEffect(() => {
+    const checkConfig = async () => {
+      try {
+        const response = await fetch('/api/config');
+        if (response.ok) {
+          setConfigExists(true);
+        } else {
+          setConfigExists(false);
+          setCurrentView('wizard');
+        }
+      } catch (error) {
+        console.error('Failed to check config:', error);
+        setConfigExists(false);
+        setCurrentView('wizard');
+      } finally {
+        setCheckingConfig(false);
+      }
+    };
+
+    checkConfig();
+  }, []);
+
+  // Handle URL hash navigation
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') as View;
+      if (hash && ['wizard', 'status', 'config', 'bitcoin-core', 'template-provider', 'updates'].includes(hash)) {
+        setCurrentView(hash);
+      }
+    };
+
+    // Check hash on mount
+    handleHashChange();
+
+    // Listen for hash changes
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   return (
     <div className="app">
@@ -59,12 +101,21 @@ function App() {
       </nav>
 
       <main className="app-main">
-        {currentView === 'wizard' && <SetupWizard />}
-        {currentView === 'status' && <StatusPanel />}
-        {currentView === 'config' && <ConfigForm />}
-        {currentView === 'bitcoin-core' && <BitcoinCore />}
-        {currentView === 'template-provider' && <TemplateProviderPanel />}
-        {currentView === 'updates' && <UpdateManager />}
+        {checkingConfig ? (
+          <div className="loading-screen">
+            <h2>Loading...</h2>
+            <p>Checking configuration...</p>
+          </div>
+        ) : (
+          <>
+            {currentView === 'wizard' && <SetupWizard />}
+            {currentView === 'status' && <StatusPanel />}
+            {currentView === 'config' && <ConfigForm />}
+            {currentView === 'bitcoin-core' && <BitcoinCore />}
+            {currentView === 'template-provider' && <TpConfig />}
+            {currentView === 'updates' && <UpdateManager />}
+          </>
+        )}
       </main>
 
       <footer className="app-footer">

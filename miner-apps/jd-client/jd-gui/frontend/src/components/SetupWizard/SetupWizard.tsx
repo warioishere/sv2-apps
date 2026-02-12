@@ -59,6 +59,30 @@ export function SetupWizard() {
   const [showBitcoinLogs, setShowBitcoinLogs] = useState(false);
   const [liveLogsEnabled, setLiveLogsEnabled] = useState(false);
   const [configuring, setConfiguring] = useState(false);
+  const [existingConfig, setExistingConfig] = useState<any>(null);
+  const [checkingExisting, setCheckingExisting] = useState(true);
+
+  // Check for existing configuration on mount
+  useEffect(() => {
+    const checkExistingConfig = async () => {
+      try {
+        const response = await fetch('/api/config');
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.toml) {
+            // Parse basic info from existing config
+            setExistingConfig(result);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check existing config:', error);
+      } finally {
+        setCheckingExisting(false);
+      }
+    };
+
+    checkExistingConfig();
+  }, []);
 
   // Auto-detect Bitcoin Core when user selects existing
   useEffect(() => {
@@ -188,11 +212,26 @@ export function SetupWizard() {
   const handleAutoConfigure = async () => {
     setConfiguring(true);
     try {
+      // Ensure network is set - use bitcoinStatus as fallback
+      let finalNetwork = state.network;
+      if (!finalNetwork && bitcoinStatus?.network) {
+        finalNetwork = bitcoinStatus.network === 'testnet' ? 'testnet4' : 'mainnet';
+        // Update state for consistency
+        setState(prev => ({ ...prev, network: finalNetwork as 'mainnet' | 'testnet4' }));
+      }
+
+      // Validate network is set
+      if (!finalNetwork) {
+        alert('⚠️ Network not set! Please go back and select a network.');
+        setConfiguring(false);
+        return;
+      }
+
       // Determine Bitcoin Core data directory
       let bitcoinCoreDataDir;
       if (state.bitcoinCoreType === 'integrated') {
         // Using integrated Docker Bitcoin Core
-        bitcoinCoreDataDir = state.network === 'mainnet'
+        bitcoinCoreDataDir = finalNetwork === 'mainnet'
           ? '/bitcoin-ipc-mainnet'
           : '/bitcoin-ipc-testnet';
       } else if (detectionResult?.detected && detectionResult.dataDir) {
@@ -200,12 +239,18 @@ export function SetupWizard() {
         bitcoinCoreDataDir = detectionResult.dataDir;
       }
 
+      console.log('Wizard config:', {
+        network: finalNetwork,
+        bitcoinCoreType: state.bitcoinCoreType,
+        bitcoinCoreDataDir,
+      });
+
       // Generate full stack configuration (sv2-tp + JD-Client)
       const response = await fetch('/api/wizard/full-stack-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          network: state.network,
+          network: finalNetwork,
           poolAddress: state.poolAddress,
           poolPort: parseInt(state.poolPort),
           jdsAddress: state.jdsAddress,
@@ -238,6 +283,70 @@ export function SetupWizard() {
   };
 
   const renderStep = () => {
+    // Show existing config warning if config exists
+    if (existingConfig && step === 0) {
+      return (
+        <div className="wizard-question">
+          <h2>⚠️ Configuration Already Exists</h2>
+          <p className="question-help">
+            A JD-Client configuration is already saved. You can view/edit it in the Configuration tab,
+            or reconfigure everything using this wizard.
+          </p>
+
+          <div className="existing-config-notice" style={{
+            padding: '1.5rem',
+            background: '#fff3cd',
+            border: '2px solid #ffc107',
+            borderRadius: '8px',
+            marginTop: '2rem',
+            marginBottom: '2rem'
+          }}>
+            <h3 style={{ marginTop: 0, color: '#856404' }}>✅ Your system is configured</h3>
+            <p style={{ color: '#856404', marginBottom: '1rem' }}>
+              Configuration file exists at <code>/app/config/jdc.toml</code>
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => window.location.hash = '#status'}
+                style={{ flex: '1', minWidth: '200px' }}
+              >
+                📊 Go to Status Panel
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => window.location.hash = '#config'}
+                style={{ flex: '1', minWidth: '200px' }}
+              >
+                ⚙️ Edit Configuration
+              </button>
+            </div>
+          </div>
+
+          <div style={{
+            padding: '1.5rem',
+            background: '#f8d7da',
+            border: '2px solid #dc3545',
+            borderRadius: '8px',
+            marginBottom: '2rem'
+          }}>
+            <h4 style={{ marginTop: 0, color: '#721c24' }}>🔄 Reconfigure Everything?</h4>
+            <p style={{ color: '#721c24', marginBottom: '1rem' }}>
+              Running this wizard will <strong>overwrite your existing configuration</strong>.
+              Make sure you have backed up any custom settings.
+            </p>
+            <button
+              className="btn btn-danger"
+              onClick={() => setExistingConfig(null)}
+              style={{ width: '100%' }}
+            >
+              ⚠️ Start Wizard (Overwrite Existing Config)
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     switch (step) {
       case 0:
         return (
@@ -395,7 +504,17 @@ export function SetupWizard() {
                       <div className="success">✅ Bitcoin Core is synced and ready!</div>
                       <button
                         className="btn-continue"
-                        onClick={() => setStep(1)}
+                        onClick={() => {
+                          // Ensure network is set from bitcoinStatus
+                          if (bitcoinStatus?.network && !state.network) {
+                            setState(prev => ({
+                              ...prev,
+                              network: bitcoinStatus.network === 'testnet' ? 'testnet4' : 'mainnet',
+                              bitcoinCoreType: 'integrated'
+                            }));
+                          }
+                          setStep(1);
+                        }}
                       >
                         Continue with Docker Bitcoin Core →
                       </button>
@@ -631,12 +750,31 @@ export function SetupWizard() {
                             │  JDS:  ${state.jdsAddress}:${state.jdsPort}
                             └────────────────────────────┘
 `}</pre>
+              <div style={{ marginTop: '1rem', padding: '1rem', background: '#e7f3ff', border: '2px solid #2563eb', borderRadius: '8px', fontSize: '0.95rem' }}>
+                <strong>💡 Why sv2-tp?</strong><br/>
+                sv2-tp is a specialized C++ program that connects to Bitcoin Core via Unix socket (IPC) and distributes block templates to JD-Client.
+                This is the recommended production setup. It's more reliable than connecting JD-Client directly to Bitcoin Core.
+              </div>
             </div>
 
             <div className="setup-steps">
               <h3>✅ Configuration Summary</h3>
+              {!state.network && (
+                <div style={{
+                  padding: '1rem',
+                  background: '#f8d7da',
+                  border: '2px solid #dc3545',
+                  borderRadius: '6px',
+                  marginBottom: '1rem',
+                  color: '#721c24'
+                }}>
+                  <strong>⚠️ Warning:</strong> Network not detected!
+                  Please go back to step 1 and ensure Bitcoin Core is running.
+                  Detected network: {bitcoinStatus?.network || 'none'}
+                </div>
+              )}
               <ol>
-                <li><strong>Bitcoin Core:</strong> {state.bitcoinCoreType === 'integrated' ? 'Docker container' : 'Existing installation'} ({state.network})</li>
+                <li><strong>Bitcoin Core:</strong> {state.bitcoinCoreType === 'integrated' ? 'Docker container' : 'Existing installation'} ({state.network || bitcoinStatus?.network || '⚠️ NOT SET'})</li>
                 <li><strong>Template Provider:</strong> sv2-tp (C++) - connects to Bitcoin Core via IPC</li>
                 <li><strong>JD-Client:</strong> Connects to sv2-tp (127.0.0.1:48442)</li>
                 <li><strong>Pool:</strong> {state.poolAddress}:{state.poolPort}</li>
@@ -679,7 +817,7 @@ export function SetupWizard() {
       <div className="wizard-header">
         <h1>🚀 JD-Client Setup Wizard</h1>
         <p>Configure your JD-Client for solo mining with full transaction control</p>
-        {step < 3 && (
+        {!existingConfig && step < 3 && (
           <div className="wizard-progress">
             <div className="progress-bar">
               <div
@@ -693,10 +831,17 @@ export function SetupWizard() {
       </div>
 
       <div className="wizard-content">
-        {renderStep()}
+        {checkingExisting ? (
+          <div className="loading-screen" style={{ padding: '3rem', textAlign: 'center' }}>
+            <h2 style={{ color: '#3b82f6', marginBottom: '1rem' }}>Checking configuration...</h2>
+            <p style={{ color: '#6b7280' }}>Please wait</p>
+          </div>
+        ) : (
+          renderStep()
+        )}
       </div>
 
-      {step > 0 && step < 3 && (
+      {!existingConfig && step > 0 && step < 3 && (
         <div className="wizard-navigation">
           <button className="btn btn-secondary" onClick={() => setStep(step - 1)}>
             ← Back

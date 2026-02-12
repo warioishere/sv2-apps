@@ -44,12 +44,16 @@ export class TpProcessManager extends EventEmitter {
         return;
       }
 
-      logger.info(`Starting sv2-tp: ${this.binaryPath} --conf ${this.configPath}`);
+      logger.info(`Starting sv2-tp: ${this.binaryPath} -conf=${this.configPath}`);
 
       try {
-        this.process = spawn(this.binaryPath, ['--conf', this.configPath], {
+        // Use -conf=<path> (single dash) per sv2-tp documentation
+        // Using -conf=0 would disable default config loading, but we'll provide the path
+        this.process = spawn(this.binaryPath, [`-conf=${this.configPath}`], {
           cwd: '/app',
-          env: { ...process.env },
+          env: {
+            ...process.env,
+          },
         });
 
         this.startTime = Date.now();

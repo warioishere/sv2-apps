@@ -4,7 +4,7 @@ import * as path from 'path';
 import { tpProcessManager } from '../services/tp-process.service';
 import { logger } from '../utils/logger';
 
-const TP_CONFIG_PATH = '/app/config/sv2-tp/sv2-tp.toml';
+const TP_CONFIG_PATH = '/app/config/sv2-tp/sv2-tp.conf';
 
 export class TpController {
   async start(req: Request, res: Response) {
@@ -40,27 +40,28 @@ export class TpController {
 # Auto-generated configuration
 # Network: ${network}
 
-[bitcoin_core]
-# Path to Bitcoin Core data directory
-# sv2-tp will connect to Bitcoin Core via IPC (Unix socket)
-datadir = "${bitcoinDataDir}"
+# Bitcoin Core data directory (where node.sock IPC socket is located)
+datadir=${bitcoinDataDir}
 
-# Network (mainnet, testnet, signet, regtest)
-network = "${network}"
+# Network (mainnet, testnet, testnet4, signet, regtest)
+chain=${network}
 
-[template_provider]
-# Address where sv2-tp listens for JD-Client connections
-address = "0.0.0.0:48442"
+# Connect to Bitcoin Core via IPC (Unix socket)
+ipcconnect=unix
 
-# Fee check interval (seconds)
-fee_check_interval = 30
+# Template Provider listening address (where JD-Client connects)
+sv2bind=0.0.0.0:48442
 
-# Minimum fee threshold (sats/vB)
-min_fee_rate = 1000
+# Stratum V2 interval (seconds) - how often to check for new templates
+sv2interval=30
 
-[logging]
-# Log level: trace, debug, info, warn, error
-level = "info"
+# Fee delta (sats/vB) - minimum fee rate threshold
+sv2feedelta=1000
+
+# Logging
+debug=sv2
+loglevel=sv2:info
+debug=ipc
 `;
 
         const configDir = path.dirname(TP_CONFIG_PATH);

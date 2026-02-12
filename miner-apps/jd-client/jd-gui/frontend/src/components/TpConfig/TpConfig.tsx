@@ -41,6 +41,8 @@ export function TpConfig() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [pathValidation, setPathValidation] = useState<PathValidationResult | null>(null);
   const [validatingPath, setValidatingPath] = useState(false);
+  const [activeTab, setActiveTab] = useState<'form' | 'raw'>('form');
+  const [rawConfig, setRawConfig] = useState<string>('');
 
   useEffect(() => {
     loadCurrentConfig();
@@ -48,6 +50,13 @@ export function TpConfig() {
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Load raw config when switching to raw tab
+  useEffect(() => {
+    if (activeTab === 'raw' && !rawConfig) {
+      loadRawConfig();
+    }
+  }, [activeTab]);
 
   // Validate custom path when it changes
   useEffect(() => {
@@ -73,12 +82,108 @@ export function TpConfig() {
       const response = await fetch('/api/tp/config/current');
       const result = await response.json();
       if (result.success && result.config) {
-        setConfig(result.config);
+        // Parse the raw config and update form fields
+        const parsedConfig = parseConfigFromRaw(result.config);
+        setConfig(prev => ({ ...prev, ...parsedConfig }));
       }
     } catch (error) {
       console.error('Failed to load current config:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const parseConfigFromRaw = (rawConfig: string): Partial<TpConfigData> => {
+    const lines = rawConfig.split('\n');
+    const parsed: any = {};
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('#') || !trimmed) continue;
+
+      const [key, value] = trimmed.split('=').map(s => s.trim());
+
+      if (key === 'datadir') {
+        // Parse datadir to determine bitcoin_source
+        if (value.includes('/bitcoin-ipc-mainnet')) {
+          parsed.bitcoin_source = 'integrated-mainnet';
+          parsed.network = 'mainnet';
+        } else if (value.includes('/bitcoin-ipc-testnet')) {
+          parsed.bitcoin_source = 'integrated-testnet';
+          parsed.network = 'testnet';
+        } else {
+          parsed.bitcoin_source = 'host-custom';
+          parsed.custom_path = value;
+        }
+      } else if (key === 'chain') {
+        parsed.network = value === 'testnet' ? 'testnet' : value;
+      } else if (key === 'sv2bind') {
+        parsed.listen_address = value;
+      } else if (key === 'sv2interval') {
+        parsed.fee_check_interval = parseInt(value) || 30;
+      } else if (key === 'sv2feedelta') {
+        parsed.min_fee_rate = parseInt(value) || 1000;
+      } else if (key === 'loglevel' && value.includes(':')) {
+        const level = value.split(':')[1].trim();
+        parsed.log_level = level;
+      }
+    }
+
+    return parsed;
+  };
+
+  const loadRawConfig = async () => {
+    setLoading(true);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/tp/config/current');
+      const result = await response.json();
+      if (result.success && result.config) {
+        setRawConfig(result.config);
+
+        // Parse and update form fields
+        const parsedConfig = parseConfigFromRaw(result.config);
+        setConfig(prev => ({ ...prev, ...parsedConfig }));
+      } else {
+        setMessage({ type: 'error', text: result.message || 'Configuration file not found' });
+      }
+    } catch (error) {
+      console.error('Failed to load raw config:', error);
+      setMessage({ type: 'error', text: 'Failed to load configuration file' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveRawConfig = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/tp/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: rawConfig }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setMessage({
+          type: 'success',
+          text: `Configuration saved successfully! File: ${result.path || '/app/config/sv2-tp/sv2-tp.conf'}`,
+        });
+      } else {
+        setMessage({
+          type: 'error',
+          text: `Failed to save configuration: ${result.error || 'Unknown error'}`,
+        });
+      }
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: `Error saving configuration: ${(error as Error).message}`,
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -228,6 +333,49 @@ level = "${config.log_level}"
         </div>
       )}
 
+      {/* Tabs */}
+      <div className="tabs">
+        <button
+          className={`tab ${activeTab === 'form' ? 'active' : ''}`}
+          onClick={() => setActiveTab('form')}
+        >
+          Form View
+        </button>
+        <button
+          className={`tab ${activeTab === 'raw' ? 'active' : ''}`}
+          onClick={() => setActiveTab('raw')}
+        >
+          Raw Configuration (sv2-tp.conf)
+        </button>
+      </div>
+
+      {activeTab === 'raw' ? (
+        <div className="config-editor-section">
+          <div className="config-header">
+            <h3>sv2-tp.conf Editor</h3>
+            <button
+              className="btn btn-primary"
+              onClick={saveRawConfig}
+              disabled={saving || status.running}
+            >
+              {saving ? 'Saving...' : 'Save Configuration'}
+            </button>
+          </div>
+          <textarea
+            className="config-editor"
+            value={rawConfig}
+            onChange={(e) => setRawConfig(e.target.value)}
+            placeholder="Loading sv2-tp.conf..."
+            spellCheck={false}
+            disabled={status.running}
+          />
+          <p className="config-note">
+            {status.running
+              ? 'Template Provider is running. Stop it to modify configuration.'
+              : 'Note: Template Provider must be restarted for configuration changes to take effect.'}
+          </p>
+        </div>
+      ) : (
       <div className="config-form">
         {/* Bitcoin Core Source */}
         <div className="form-section">
@@ -476,6 +624,7 @@ level = "${config.log_level}"
           )}
         </div>
       </div>
+      )}
 
       <div className="info-box">
         <h4>About Template Provider Configuration</h4>
