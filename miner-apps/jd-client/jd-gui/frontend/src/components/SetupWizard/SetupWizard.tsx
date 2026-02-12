@@ -195,6 +195,19 @@ export function SetupWizard() {
     return () => clearInterval(interval);
   }, []);
 
+  // Auto-set network when bitcoinStatus is detected
+  useEffect(() => {
+    if (bitcoinStatus?.running && bitcoinStatus.network && !state.network) {
+      const detectedNetwork = bitcoinStatus.network === 'testnet' ? 'testnet4' : 'mainnet';
+      console.log(`Auto-detected running Bitcoin Core on ${bitcoinStatus.network}, setting wizard network to ${detectedNetwork}`);
+      setState(prev => ({
+        ...prev,
+        network: detectedNetwork,
+        bitcoinCoreType: prev.bitcoinCoreType || 'integrated'
+      }));
+    }
+  }, [bitcoinStatus?.running, bitcoinStatus?.network]);
+
   useEffect(() => {
     if (showBitcoinLogs) {
       setLiveLogsEnabled(true);
@@ -239,10 +252,12 @@ export function SetupWizard() {
         bitcoinCoreDataDir = detectionResult.dataDir;
       }
 
-      console.log('Wizard config:', {
-        network: finalNetwork,
-        bitcoinCoreType: state.bitcoinCoreType,
-        bitcoinCoreDataDir,
+      console.log('🔍 Wizard saving config:', {
+        'finalNetwork (USED)': finalNetwork,
+        'bitcoinCoreDataDir (USED)': bitcoinCoreDataDir,
+        'state.network': state.network,
+        'bitcoinStatus.network': bitcoinStatus?.network,
+        'state.bitcoinCoreType': state.bitcoinCoreType,
       });
 
       // Generate full stack configuration (sv2-tp + JD-Client)
