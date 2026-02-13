@@ -82,7 +82,9 @@ services:
         SV2_TP_COMMIT: ${SV2_TP_COMMIT:-f4dfc9ed004cb455e3f5e99f4b533e583b3d3dd3}
     container_name: sv2-jd-gui
     ports:
-      - "3000:5000"
+      - "3000:5000"    # GUI
+      - "34265:34265"  # JD-Client (miners connect here via Stratum V2)
+      - "9091:9091"    # JD-Client monitoring/metrics
     volumes:
       - jdc-config:/app/config
       - jdc-logs:/app/logs

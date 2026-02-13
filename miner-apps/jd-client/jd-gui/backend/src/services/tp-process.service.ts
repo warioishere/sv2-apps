@@ -44,25 +44,40 @@ export class TpProcessManager extends EventEmitter {
         return;
       }
 
-      // sv2-tp tries to write sv2-debug.log in datadir, which may be read-only.
-      // We always redirect to a writable location to avoid StartLogging failures.
-      const writableLogDir = '/app/data/sv2-tp';
-      const writableLogFile = path.join(writableLogDir, 'sv2-debug.log');
+      // sv2-tp writes multiple files to datadir (debug log, PID file, key files).
+      // The Bitcoin Core IPC volume is mounted read-only, so we create a writable
+      // datadir with a symlink to the actual node.sock IPC socket.
+      let configContent = '';
       try {
-        if (!fs.existsSync(writableLogDir)) {
-          fs.mkdirSync(writableLogDir, { recursive: true });
-        }
-        // Pre-create the log file so sv2-tp's fopen("a") succeeds
-        fs.writeFileSync(writableLogFile, '', { flag: 'a' });
+        configContent = fs.readFileSync(this.configPath, 'utf-8');
       } catch (e) {
-        logger.warn(`Could not create writable log dir: ${(e as Error).message}`);
+        // ignore
+      }
+      const datadirMatch = configContent.match(/^datadir=(.+)$/m);
+      const realDatadir = datadirMatch ? datadirMatch[1].trim() : '/bitcoin-ipc-mainnet';
+      const writableDatadir = '/app/data/sv2-tp/datadir';
+
+      try {
+        if (!fs.existsSync(writableDatadir)) {
+          fs.mkdirSync(writableDatadir, { recursive: true });
+        }
+        // Symlink node.sock from the real Bitcoin Core datadir
+        const symlinkPath = path.join(writableDatadir, 'node.sock');
+        const realSocket = path.join(realDatadir, 'node.sock');
+        if (fs.existsSync(realSocket)) {
+          // Remove stale symlink if it exists
+          try { fs.unlinkSync(symlinkPath); } catch (_) { /* doesn't exist */ }
+          fs.symlinkSync(realSocket, symlinkPath);
+          logger.info(`Symlinked ${symlinkPath} -> ${realSocket}`);
+        }
+      } catch (e) {
+        logger.warn(`Writable datadir setup: ${(e as Error).message}`);
       }
 
       const args = [
         `-conf=${this.configPath}`,
         '-printtoconsole',
-        `-debuglogfile=${writableLogFile}`,
-        `-pid=${writableLogDir}/sv2-tp.pid`,
+        `-datadir=${writableDatadir}`,
       ];
 
       logger.info(`Starting sv2-tp: ${this.binaryPath} ${args.join(' ')}`);

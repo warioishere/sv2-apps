@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { apiService } from '../../services/api.service';
 import './TpConfig.css';
 
@@ -44,6 +44,7 @@ export function TpConfig() {
   const [activeTab, setActiveTab] = useState<'form' | 'raw' | 'logs'>('form');
   const [rawConfig, setRawConfig] = useState<string>('');
   const [logs, setLogs] = useState<string>('');
+  const logsEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-detect Bitcoin Core network on mount
   useEffect(() => {
@@ -54,7 +55,7 @@ export function TpConfig() {
         if (bitcoinStatus.running && bitcoinStatus.network) {
           const detectedNetwork = bitcoinStatus.network === 'testnet' ? 'testnet' : 'mainnet';
           const bitcoinSource = detectedNetwork === 'mainnet' ? 'integrated-mainnet' : 'integrated-testnet';
-          console.log(`🔍 TpConfig: Auto-detected Bitcoin Core running on ${bitcoinStatus.network}, setting to ${bitcoinSource}`);
+          console.log(`TpConfig: Auto-detected Bitcoin Core running on ${bitcoinStatus.network}, setting to ${bitcoinSource}`);
           setConfig(prev => ({
             ...prev,
             bitcoin_source: bitcoinSource,
@@ -85,13 +86,17 @@ export function TpConfig() {
     }
   }, [status.running, activeTab]);
 
+  // Auto-scroll to bottom when new logs arrive
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
+
   const fetchLogs = async () => {
     try {
       const response = await fetch('/api/tp/logs?count=100');
       const result = await response.json();
       if (result.logs && Array.isArray(result.logs)) {
-        const logsText = result.logs.map((log: any) => log.message).join('\n');
-        setLogs(logsText);
+        setLogs(result.logs.map((log: any) => log.message).join('\n'));
       }
     } catch (error) {
       console.error('Failed to fetch logs:', error);
@@ -795,17 +800,14 @@ debug=ipc
       {activeTab === 'logs' && (
         <div className="logs-section">
           <div className="logs-header">
-            <h3>Template Provider Logs</h3>
-            <button
-              className="btn btn-secondary"
-              onClick={fetchLogs}
-              disabled={loading}
-            >
-              {loading ? 'Refreshing...' : 'Refresh'}
+            <h3>Live Logs</h3>
+            <button className="btn btn-secondary" onClick={fetchLogs}>
+              Refresh
             </button>
           </div>
           <div className="logs-container">
-            <pre className="logs-content">{logs || (status.running ? 'No logs yet...' : 'Template Provider is not running.')}</pre>
+            <pre className="logs-content">{logs || 'No logs available'}</pre>
+            <div ref={logsEndRef} />
           </div>
         </div>
       )}
