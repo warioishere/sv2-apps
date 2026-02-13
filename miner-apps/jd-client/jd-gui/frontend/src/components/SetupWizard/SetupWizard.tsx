@@ -697,13 +697,13 @@ export function SetupWizard() {
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="jdc_user"
+                  placeholder="bc1q... (your Bitcoin address)"
                   value={state.userIdentity}
                   onChange={(e) => setState(prev => ({ ...prev, userIdentity: e.target.value }))}
                   style={{ width: '100%', padding: '0.75rem', fontSize: '1rem', borderRadius: '6px', border: '2px solid #dee2e6' }}
                 />
                 <small style={{ color: '#666', fontSize: '0.85rem' }}>
-                  Your unique identifier for this mining setup
+                  <strong>Recommended:</strong> Use your Bitcoin address as user identity for solo mining pools
                 </small>
               </div>
 

@@ -282,9 +282,9 @@ export function ConfigForm() {
                 type="text"
                 value={config.user_identity}
                 onChange={(e) => updateConfig({ user_identity: e.target.value })}
-                placeholder="your-miner-name"
+                placeholder="bc1q... (your Bitcoin address recommended)"
               />
-              <small>Identifier for this mining instance</small>
+              <small><strong>Recommended:</strong> Use your Bitcoin address as user identity for solo mining pools</small>
             </div>
 
             <div className="form-group">
