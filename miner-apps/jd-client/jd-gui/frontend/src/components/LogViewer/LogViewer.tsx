@@ -3,6 +3,7 @@ import './LogViewer.css';
 
 export function LogViewer() {
   const [logs, setLogs] = useState<string>('');
+  const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -12,8 +13,10 @@ export function LogViewer() {
   }, []);
 
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+    if (autoScroll) {
+      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, autoScroll]);
 
   const fetchLogs = async () => {
     try {
@@ -31,9 +34,21 @@ export function LogViewer() {
     <div className="logs-section">
       <div className="logs-header">
         <h3>Live Logs</h3>
-        <button className="btn-small" onClick={fetchLogs}>
-          Refresh
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            className="btn-small"
+            onClick={() => setAutoScroll(!autoScroll)}
+            style={{
+              backgroundColor: autoScroll ? '#28a745' : '#6c757d',
+              color: 'white'
+            }}
+          >
+            {autoScroll ? '⏸ Pause Auto-scroll' : '▶ Resume Auto-scroll'}
+          </button>
+          <button className="btn-small" onClick={fetchLogs}>
+            🔄 Refresh
+          </button>
+        </div>
       </div>
       <div className="logs-container">
         <pre className="logs">{logs || 'No logs available'}</pre>
