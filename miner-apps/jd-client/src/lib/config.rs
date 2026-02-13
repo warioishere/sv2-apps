@@ -55,6 +55,10 @@ pub struct JobDeclaratorClientConfig {
     /// Optional monitoring server bind address
     #[serde(default)]
     monitoring_address: Option<SocketAddr>,
+    /// Solo mining pool support: When enabled, sends the payout address to the pool
+    /// in the user_identifier field for direct reward distribution
+    #[serde(default)]
+    pub send_payout_address_to_pool: bool,
 }
 
 impl JobDeclaratorClientConfig {
