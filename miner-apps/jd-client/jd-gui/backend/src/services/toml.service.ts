@@ -18,6 +18,7 @@ export interface ConfigInput {
   sv2_tp?: Sv2TpConfig;
   bitcoin_core_ipc?: BitcoinCoreIpcConfig;
   monitoring_address?: string;
+  send_payout_address_to_pool?: boolean;
   supported_extensions?: number[];
   required_extensions?: number[];
 }
@@ -68,6 +69,11 @@ export class TomlService {
     sections.push(`mode = "${config.mode}"`);
     sections.push(`jdc_signature = "${config.jdc_signature}"`);
     sections.push(`coinbase_reward_script = "${config.coinbase_reward_script}"`);
+
+    // Solo mining pool support (optional)
+    if (config.send_payout_address_to_pool !== undefined) {
+      sections.push(`send_payout_address_to_pool = ${config.send_payout_address_to_pool}`);
+    }
     sections.push('');
 
     // Monitoring (optional)
