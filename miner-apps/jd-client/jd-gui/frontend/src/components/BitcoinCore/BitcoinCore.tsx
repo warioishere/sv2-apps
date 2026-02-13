@@ -23,6 +23,7 @@ export function BitcoinCore() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'logs' | 'config'>('logs');
+  const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,8 +47,10 @@ export function BitcoinCore() {
   }, [status.running, activeTab]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [logs]);
+    if (autoScroll) {
+      scrollToBottom();
+    }
+  }, [logs, autoScroll]);
 
   const scrollToBottom = () => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -343,9 +346,21 @@ export function BitcoinCore() {
                   <div className="logs-section">
                     <div className="logs-header">
                       <h3>Live Logs</h3>
-                      <button className="btn-small" onClick={fetchLogs} disabled={loading}>
-                        Refresh
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          className="btn-small"
+                          onClick={() => setAutoScroll(!autoScroll)}
+                          style={{
+                            backgroundColor: autoScroll ? '#28a745' : '#6c757d',
+                            color: 'white'
+                          }}
+                        >
+                          {autoScroll ? '⏸ Pause Auto-scroll' : '▶ Resume Auto-scroll'}
+                        </button>
+                        <button className="btn-small" onClick={fetchLogs} disabled={loading}>
+                          🔄 Refresh
+                        </button>
+                      </div>
                     </div>
                     <div className="logs-container">
                       <pre className="logs">{logs || 'No logs available'}</pre>

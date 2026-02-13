@@ -44,6 +44,7 @@ export function TpConfig() {
   const [activeTab, setActiveTab] = useState<'form' | 'raw' | 'logs'>('form');
   const [rawConfig, setRawConfig] = useState<string>('');
   const [logs, setLogs] = useState<string>('');
+  const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-detect Bitcoin Core network on mount
@@ -88,8 +89,10 @@ export function TpConfig() {
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+    if (autoScroll) {
+      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, autoScroll]);
 
   const fetchLogs = async () => {
     try {
@@ -801,9 +804,21 @@ debug=ipc
         <div className="logs-section">
           <div className="logs-header">
             <h3>Live Logs</h3>
-            <button className="btn btn-secondary" onClick={fetchLogs}>
-              Refresh
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setAutoScroll(!autoScroll)}
+                style={{
+                  backgroundColor: autoScroll ? '#28a745' : '#6c757d',
+                  color: 'white'
+                }}
+              >
+                {autoScroll ? '⏸ Pause Auto-scroll' : '▶ Resume Auto-scroll'}
+              </button>
+              <button className="btn btn-secondary" onClick={fetchLogs}>
+                🔄 Refresh
+              </button>
+            </div>
           </div>
           <div className="logs-container">
             <pre className="logs-content">{logs || 'No logs available'}</pre>
