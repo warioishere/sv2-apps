@@ -99,6 +99,7 @@ impl JobDeclaratorClientConfig {
             supported_extensions,
             required_extensions,
             monitoring_address: None,
+            send_payout_address_to_pool: false,
         }
     }
 
