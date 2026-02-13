@@ -1,153 +1,37 @@
-.log-viewer {
-  background: white;
-  border-radius: 8px;
-  padding: 24px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+/* Matches Bitcoin Core log styling exactly */
+.logs-section {
   display: flex;
   flex-direction: column;
-  height: 600px;
+  gap: 12px;
 }
 
-.log-header {
+.logs-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
 }
 
-.log-header h2 {
+.logs-header h3 {
   margin: 0;
-  font-size: 20px;
-  color: #333;
+  font-size: 16px;
+  color: #1a1a1a;
 }
 
-.log-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.connection-indicator {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.connection-indicator.connected {
-  color: #16a34a;
-}
-
-.connection-indicator.disconnected {
-  color: #dc2626;
-}
-
-.log-controls {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.filter-group,
-.control-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.filter-group label,
-.control-group label {
-  font-weight: 600;
-  color: #666;
-  font-size: 14px;
-}
-
-.filter-group select {
-  padding: 6px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.control-group input[type="checkbox"] {
-  cursor: pointer;
-}
-
-.btn-secondary {
-  background: #6b7280;
-  color: white;
-}
-
-.btn-secondary:hover {
-  background: #4b5563;
-}
-
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-}
-
-.btn-primary:hover {
-  background: #2563eb;
-}
-
-.log-container {
-  flex: 1;
+.logs-container {
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 16px;
+  max-height: 500px;
   overflow-y: auto;
-  background: #1e293b;
-  border-radius: 4px;
-  padding: 12px;
+  border: 1px solid #374151;
+}
+
+.logs {
+  margin: 0;
   font-family: 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.log-empty {
-  color: #94a3b8;
-  text-align: center;
-  padding: 40px;
-}
-
-.log-line {
-  margin-bottom: 4px;
-  word-wrap: break-word;
-}
-
-.log-timestamp {
-  color: #64748b;
-  margin-right: 8px;
-}
-
-.log-level {
-  font-weight: 600;
-  margin-right: 8px;
-}
-
-.log-message {
-  color: #e2e8f0;
-}
-
-.log-info .log-level {
-  color: #3b82f6;
-}
-
-.log-warn .log-level {
-  color: #f59e0b;
-}
-
-.log-error .log-level {
-  color: #ef4444;
-}
-
-.log-debug .log-level {
-  color: #8b5cf6;
-}
-
-.log-footer {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
   font-size: 12px;
-  color: #6b7280;
+  line-height: 1.5;
+  color: #d1d5db;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
