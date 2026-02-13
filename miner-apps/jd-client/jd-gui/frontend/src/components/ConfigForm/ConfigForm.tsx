@@ -33,6 +33,7 @@ const defaultConfig: ConfigInput = {
     data_dir: '',
   },
   monitoring_address: '',
+  send_payout_address_to_pool: true,
 };
 
 type TabId = 'basic' | 'encryption' | 'mining' | 'upstreams' | 'template' | 'advanced';
@@ -317,6 +318,19 @@ export function ConfigForm() {
                 placeholder="addr(...) - Generated automatically"
               />
               <small>This will be used in the TOML config (addr format)</small>
+            </div>
+
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={config.send_payout_address_to_pool || false}
+                  onChange={(e) => updateConfig({ send_payout_address_to_pool: e.target.checked })}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                <span>Send payout address to pool (Solo Mining Pool Support)</span>
+              </label>
+              <small>Enable this for solo mining pools to receive rewards directly to your address</small>
             </div>
 
             <div className="form-row">
