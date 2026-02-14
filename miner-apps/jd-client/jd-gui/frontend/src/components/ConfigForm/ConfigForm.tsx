@@ -360,8 +360,8 @@ export function ConfigForm() {
                 value={config.mode}
                 onChange={(e) => updateConfig({ mode: e.target.value as 'FULLTEMPLATE' | 'COINBASEONLY' })}
               >
+                <option value="FULLTEMPLATE">Full Template (Recommended)</option>
                 <option value="COINBASEONLY">Coinbase Only</option>
-                <option value="FULLTEMPLATE">Full Template</option>
               </select>
               <small>Full Template = complete block control, Coinbase Only = only customize coinbase</small>
             </div>
