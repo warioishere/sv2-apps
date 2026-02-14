@@ -132,7 +132,7 @@ export class ConfigExamplesService {
         cert_validity_sec: parsed.cert_validity_sec as number,
         user_identity: parsed.user_identity as string || 'jdc-user',
         shares_per_minute: parsed.shares_per_minute as number || 60,
-        share_batch_size: parsed.share_batch_size as number || 3,
+        share_batch_size: parsed.share_batch_size as number || 1,
         mode: mode,
         jdc_signature: parsed.jdc_signature as string,
         coinbase_reward_script: parsed.coinbase_reward_script as string,

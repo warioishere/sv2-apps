@@ -253,7 +253,7 @@ debug=ipc
       cert_validity_sec: 3600,
       user_identity: userIdentity || 'jdc_user',
       shares_per_minute: 60.0,
-      share_batch_size: 10,
+      share_batch_size: 1,
       mode: 'FULLTEMPLATE',
       jdc_signature: 'JD-Client with Full Transaction Control',
       coinbase_reward_script: coinbaseScript,

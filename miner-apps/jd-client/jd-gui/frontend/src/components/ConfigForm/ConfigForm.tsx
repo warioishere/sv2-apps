@@ -14,7 +14,7 @@ const defaultConfig: ConfigInput = {
   cert_validity_sec: 3600,
   user_identity: '',
   shares_per_minute: 60.0,
-  share_batch_size: 3,
+  share_batch_size: 1,
   mode: 'FULLTEMPLATE',
   jdc_signature: '00000000000000000000000000000000',
   coinbase_reward_script: '',
