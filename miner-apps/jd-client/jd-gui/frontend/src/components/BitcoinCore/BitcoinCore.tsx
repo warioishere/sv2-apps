@@ -166,6 +166,48 @@ export function BitcoinCore() {
     }
   };
 
+  const handleSwitchNetwork = async () => {
+    if (!status.network) return;
+    const targetNetwork = status.network === 'mainnet' ? 'testnet' : 'mainnet';
+    const confirmed = window.confirm(
+      `Switch from ${status.network} to ${targetNetwork}? This will stop the current Bitcoin Core instance and start it on ${targetNetwork}.`
+    );
+    if (!confirmed) return;
+
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const stopResult = await apiService.stopBitcoinCore(status.network);
+      if (!stopResult.success) {
+        setMessage({ type: 'error', text: stopResult.message || 'Failed to stop current network' });
+        setLoading(false);
+        return;
+      }
+
+      const startResult = await apiService.startBitcoinCore(targetNetwork);
+      if (startResult.success) {
+        setMessage({
+          type: 'success',
+          text: startResult.building
+            ? `Switched to ${targetNetwork}. Building Bitcoin Core (15-20 minutes).`
+            : `Switched to ${targetNetwork} successfully`,
+        });
+        setLogs('');
+        setConfig('');
+        await fetchStatus();
+      } else {
+        setMessage({ type: 'error', text: startResult.message || `Failed to start ${targetNetwork}` });
+        await fetchStatus();
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: `Error: ${(error as Error).message}` });
+      await fetchStatus();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleStart = async (network: 'mainnet' | 'testnet') => {
     setLoading(true);
     setMessage(null);
@@ -310,6 +352,13 @@ export function BitcoinCore() {
                   disabled={loading}
                 >
                   Restart
+                </button>
+                <button
+                  className="btn btn-switch"
+                  onClick={handleSwitchNetwork}
+                  disabled={loading}
+                >
+                  Switch to {status.network === 'mainnet' ? 'Testnet' : 'Mainnet'}
                 </button>
                 <button className="btn btn-danger" onClick={handleStop} disabled={loading}>
                   Stop

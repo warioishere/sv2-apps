@@ -221,6 +221,15 @@
   background: #d97706;
 }
 
+.btn-switch {
+  background: #e67e22;
+  color: white;
+}
+
+.btn-switch:hover:not(:disabled) {
+  background: #d35400;
+}
+
 .btn-danger {
   background: #ef4444;
   color: white;
