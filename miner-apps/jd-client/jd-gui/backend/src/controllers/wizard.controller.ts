@@ -254,7 +254,7 @@ debug=ipc
       user_identity: userIdentity || 'jdc_user',
       shares_per_minute: 60.0,
       share_batch_size: 10,
-      mode: 'independent',
+      mode: 'FULLTEMPLATE',
       jdc_signature: 'JD-Client with Full Transaction Control',
       coinbase_reward_script: coinbaseScript,
       send_payout_address_to_pool: sendPayoutAddressToPool,

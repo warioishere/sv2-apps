@@ -118,13 +118,9 @@ export class ConfigExamplesService {
     try {
       const parsed = TOML.parse(tomlContent);
 
-      // Map TOML mode to ConfigInput mode
-      let mode: 'aggregated' | 'independent' = 'independent';
-      if (parsed.mode === 'FULLTEMPLATE') {
-        mode = 'aggregated';
-      } else if (parsed.mode === 'COINBASEONLY') {
-        mode = 'independent';
-      }
+      // Mode is already in correct format (FULLTEMPLATE or COINBASEONLY)
+      const mode: 'FULLTEMPLATE' | 'COINBASEONLY' =
+        parsed.mode === 'FULLTEMPLATE' ? 'FULLTEMPLATE' : 'COINBASEONLY';
 
       // Convert parsed TOML to ConfigInput format
       const config: ConfigInput = {

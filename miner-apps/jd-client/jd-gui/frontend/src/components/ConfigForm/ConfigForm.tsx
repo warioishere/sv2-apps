@@ -15,7 +15,7 @@ const defaultConfig: ConfigInput = {
   user_identity: '',
   shares_per_minute: 60.0,
   share_batch_size: 3,
-  mode: 'independent',
+  mode: 'FULLTEMPLATE',
   jdc_signature: '00000000000000000000000000000000',
   coinbase_reward_script: '',
   upstreams: [
@@ -358,12 +358,12 @@ export function ConfigForm() {
               <label>Mode</label>
               <select
                 value={config.mode}
-                onChange={(e) => updateConfig({ mode: e.target.value as 'aggregated' | 'independent' })}
+                onChange={(e) => updateConfig({ mode: e.target.value as 'FULLTEMPLATE' | 'COINBASEONLY' })}
               >
-                <option value="independent">Independent</option>
-                <option value="aggregated">Aggregated</option>
+                <option value="COINBASEONLY">Coinbase Only</option>
+                <option value="FULLTEMPLATE">Full Template</option>
               </select>
-              <small>Mining mode: independent or aggregated</small>
+              <small>Full Template = complete block control, Coinbase Only = only customize coinbase</small>
             </div>
           </div>
         )}

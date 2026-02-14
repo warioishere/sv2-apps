@@ -8,7 +8,7 @@ export interface ConfigInput {
   user_identity: string;
   shares_per_minute: number;
   share_batch_size: number;
-  mode: 'aggregated' | 'independent';
+  mode: 'FULLTEMPLATE' | 'COINBASEONLY';
   jdc_signature: string;
   coinbase_reward_script: string;
   upstreams: UpstreamConfig[];

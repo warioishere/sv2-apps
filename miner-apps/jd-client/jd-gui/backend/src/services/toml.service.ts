@@ -10,7 +10,7 @@ export interface ConfigInput {
   user_identity: string;
   shares_per_minute: number;
   share_batch_size: number;
-  mode: 'aggregated' | 'independent';
+  mode: 'FULLTEMPLATE' | 'COINBASEONLY';
   jdc_signature: string;
   coinbase_reward_script: string;
   upstreams: UpstreamConfig[];
@@ -175,8 +175,8 @@ export class TomlService {
     }
 
     // Validate mode
-    if (!['aggregated', 'independent'].includes(config.mode)) {
-      errors.push('mode must be "aggregated" or "independent"');
+    if (!['FULLTEMPLATE', 'COINBASEONLY'].includes(config.mode)) {
+      errors.push('mode must be "FULLTEMPLATE" or "COINBASEONLY"');
     }
 
     // Validate jdc_signature (any non-empty string)
