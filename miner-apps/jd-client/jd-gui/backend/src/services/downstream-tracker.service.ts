@@ -23,14 +23,14 @@ interface PendingSetup {
 const PENDING_EXPIRY_MS = 30_000; // 30 seconds
 
 // Regex for SetupConnection log lines
-// Example: Received: SetupConnection(protocol: X, ..., vendor: bitaxe, hardware_version: 401, firmware: 2.5.0, device_id: ABC123)
+// Example: Received: SetupConnection(protocol: 0, ..., vendor: bitaxe, hardware_version: BM1370, firmware: , device_id: )
 const SETUP_RE =
-  /Received:\s*SetupConnection\(.*?vendor:\s*([^,)]+).*?hardware_version:\s*([^,)]+).*?firmware:\s*([^,)]+).*?device_id:\s*([^,)]*)\)/;
+  /Received:\s*SetupConnection\(.*?vendor:\s*([^,)]+).*?hardware_version:\s*([^,)]+).*?firmware:\s*([^,)]*).*?device_id:\s*([^,)]*)\)/;
 
 // Regex for OpenStandardMiningChannel log lines
-// Example: downstream_id=3 ... Received: OpenStandardMiningChannel(request_id: 0, user_identity: addr.worker1, nominal_hash_rate: 500000000000, max_target: ...)
+// Example: Received: OpenStandardMiningChannel(..., user_identity: addr.worker1, nominal_hash_rate: 500000000000, ...) downstream_id=1
 const CHANNEL_RE =
-  /downstream_id=(\d+).*?Received:\s*OpenStandardMiningChannel\(.*?user_identity:\s*([^,)]+).*?nominal_hash_rate:\s*([\d.eE+]+)/;
+  /Received:\s*OpenStandardMiningChannel\(.*?user_identity:\s*([^,)]+).*?nominal_hash_rate:\s*([\d.eE+]+).*?downstream_id=(\d+)/;
 
 // Regex for disconnect log lines
 // Example: Downstream Some(3) disconnected
@@ -62,9 +62,9 @@ export class DownstreamTrackerService {
     // Try OpenStandardMiningChannel
     const channelMatch = line.match(CHANNEL_RE);
     if (channelMatch) {
-      const downstreamId = parseInt(channelMatch[1], 10);
-      const userIdentity = channelMatch[2].trim();
-      const nominalHashRate = parseFloat(channelMatch[3]);
+      const userIdentity = channelMatch[1].trim();
+      const nominalHashRate = parseFloat(channelMatch[2]);
+      const downstreamId = parseInt(channelMatch[3], 10);
 
       this.cleanExpiredPending();
       const pending = this.pendingQueue.shift();
