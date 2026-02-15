@@ -13,6 +13,7 @@ interface WizardState {
   userIdentity: string;
   coinbaseAddress: string;
   sendPayoutAddressToPool: boolean;
+  propagateUpstreamTarget: boolean;
 }
 
 interface DetectionResult {
@@ -50,6 +51,7 @@ export function SetupWizard() {
     userIdentity: 'jdc_user',
     coinbaseAddress: '',
     sendPayoutAddressToPool: true,
+    propagateUpstreamTarget: false,
   });
 
   const [detecting, setDetecting] = useState(false);
@@ -283,6 +285,7 @@ export function SetupWizard() {
           userIdentity: state.userIdentity,
           coinbaseAddress: state.coinbaseAddress,
           sendPayoutAddressToPool: state.sendPayoutAddressToPool,
+          propagateUpstreamTarget: state.propagateUpstreamTarget,
           bitcoinCoreDataDir,
         }),
       });
@@ -666,6 +669,23 @@ export function SetupWizard() {
                 />
                 <small style={{ color: '#666', fontSize: '0.85rem' }}>
                   Leave empty if your pool doesn't require authentication
+                </small>
+              </div>
+
+              <div style={{ marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#fff3cd', borderRadius: '6px', border: '1px solid #ffc107' }}>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={state.propagateUpstreamTarget}
+                    onChange={(e) => setState(prev => ({ ...prev, propagateUpstreamTarget: e.target.checked }))}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontWeight: '500' }}>
+                    Propagate upstream target to downstream miners (Experimental)
+                  </span>
+                </label>
+                <small style={{ color: '#666', fontSize: '0.85rem', marginLeft: '1.75rem', display: 'block', marginTop: '0.25rem' }}>
+                  Forwards the pool's mining target to downstream miners and caps vardiff targets, preventing shares from being silently dropped for more accurate pool hashrate reporting
                 </small>
               </div>
             </div>

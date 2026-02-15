@@ -29,6 +29,7 @@ export interface UpstreamConfig {
   authority_pubkey: string;
   pool_address: string;
   jd_address?: string;
+  propagate_upstream_target?: boolean;
 }
 
 export interface Sv2TpConfig {
@@ -118,6 +119,9 @@ export class TomlService {
         const [jdHost, jdPort] = upstream.jd_address.split(':');
         sections.push(`jds_address = "${jdHost}"`);
         sections.push(`jds_port = ${jdPort}`);
+      }
+      if (upstream.propagate_upstream_target !== undefined) {
+        sections.push(`propagate_upstream_target = ${upstream.propagate_upstream_target}`);
       }
       sections.push('');
     }

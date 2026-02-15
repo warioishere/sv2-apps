@@ -581,7 +581,12 @@ impl HandleMiningMessagesFromServerAsync for ChannelManager {
 
     // Handles a `SetTarget` message from upstream.
     //
-    // Updates the corresponding upstream channel's target state.
+    // Updates the corresponding upstream channel's target state and propagates
+    // the new target to all downstream channels. When propagation is enabled,
+    // downstream targets are aligned to the upstream target exactly. This ensures
+    // the downstream share rate matches what the pool expects, preventing both
+    // silent share drops (downstream too easy) and hashrate under-reporting
+    // (downstream too hard — fewer shares but pool credits each at its own target).
     async fn handle_set_target(
         &mut self,
         _server_id: Option<usize>,
@@ -589,13 +594,69 @@ impl HandleMiningMessagesFromServerAsync for ChannelManager {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         info!("Received: {}", msg);
+        let upstream_target = Target::from_le_bytes(
+            msg.maximum_target.clone().as_ref().try_into().unwrap(),
+        );
+
+        let mut updates: Vec<RouteMessageTo> = Vec::new();
+        let propagate = self.propagate_upstream_target.load(std::sync::atomic::Ordering::Relaxed);
+
         self.channel_manager_data.super_safe_lock(|data| {
+            // Update the upstream channel's target (always, regardless of propagation flag)
             if let Some(ref mut upstream) = data.upstream_channel {
-                upstream.set_target(Target::from_le_bytes(
-                    msg.maximum_target.clone().as_ref().try_into().unwrap(),
-                ));
+                upstream.set_target(upstream_target);
+            }
+
+            // Propagate to downstream channels: align to upstream target exactly
+            if propagate {
+                for (downstream_id, downstream) in data.downstream.iter_mut() {
+                    downstream.downstream_data.super_safe_lock(|dd| {
+                        for (channel_id, channel) in dd.standard_channels.iter_mut() {
+                            if *channel.get_target() != upstream_target {
+                                channel.set_target(upstream_target);
+                                updates.push(
+                                    (
+                                        *downstream_id,
+                                        Mining::SetTarget(SetTarget {
+                                            channel_id: *channel_id,
+                                            maximum_target: upstream_target.to_le_bytes().into(),
+                                        }),
+                                    )
+                                        .into(),
+                                );
+                                info!(
+                                    "Aligned standard channel {} target to upstream on downstream {}",
+                                    channel_id, downstream_id
+                                );
+                            }
+                        }
+                        for (channel_id, channel) in dd.extended_channels.iter_mut() {
+                            if *channel.get_target() != upstream_target {
+                                channel.set_target(upstream_target);
+                                updates.push(
+                                    (
+                                        *downstream_id,
+                                        Mining::SetTarget(SetTarget {
+                                            channel_id: *channel_id,
+                                            maximum_target: upstream_target.to_le_bytes().into(),
+                                        }),
+                                    )
+                                        .into(),
+                                );
+                                info!(
+                                    "Aligned extended channel {} target to upstream on downstream {}",
+                                    channel_id, downstream_id
+                                );
+                            }
+                        }
+                    });
+                }
             }
         });
+
+        for message in updates {
+            let _ = message.forward(&self.channel_manager_channel).await;
+        }
         Ok(())
     }
 

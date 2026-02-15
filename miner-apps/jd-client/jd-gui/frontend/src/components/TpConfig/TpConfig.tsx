@@ -45,7 +45,8 @@ export function TpConfig() {
   const [rawConfig, setRawConfig] = useState<string>('');
   const [logs, setLogs] = useState<string>('');
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  const prevLogsRef = useRef<string>('');
   const lastKnownBitcoinNetwork = useRef<string | null>(null);
   const configRef = useRef(config);
   const statusRef = useRef(status);
@@ -175,8 +176,8 @@ debug=ipc
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
-    if (autoScroll) {
-      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
     }
   }, [logs, autoScroll]);
 
@@ -185,11 +186,22 @@ debug=ipc
       const response = await fetch('/api/tp/logs?count=100');
       const result = await response.json();
       if (result.logs && Array.isArray(result.logs)) {
-        setLogs(result.logs.map((log: any) => log.message).join('\n'));
+        const newLogs = result.logs.map((log: any) => log.message).join('\n');
+        if (newLogs !== prevLogsRef.current) {
+          prevLogsRef.current = newLogs;
+          setLogs(newLogs);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch logs:', error);
     }
+  };
+
+  const handleLogsScroll = () => {
+    if (!logsContainerRef.current) return;
+    const el = logsContainerRef.current;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    setAutoScroll(atBottom);
   };
 
   // Load raw config when switching to raw tab
@@ -906,9 +918,8 @@ debug=ipc
               </button>
             </div>
           </div>
-          <div className="logs-container">
+          <div className="logs-container" ref={logsContainerRef} onScroll={handleLogsScroll}>
             <pre className="logs-content">{logs || 'No logs available'}</pre>
-            <div ref={logsEndRef} />
           </div>
         </div>
       )}

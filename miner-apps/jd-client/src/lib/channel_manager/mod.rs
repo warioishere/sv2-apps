@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, VecDeque},
     net::SocketAddr,
     sync::{
-        atomic::{AtomicU32, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -259,6 +259,9 @@ pub struct ChannelManager {
     send_payout_address_to_pool: bool,
     /// The coinbase reward script used to extract the payout address
     coinbase_reward_script: stratum_apps::config_helpers::CoinbaseRewardScript,
+    /// When enabled, propagates upstream SetTarget to downstream miners and caps vardiff targets.
+    /// Updated on upstream connect/failover based on the active upstream's config.
+    propagate_upstream_target: Arc<AtomicBool>,
 }
 
 #[cfg_attr(not(test), hotpath::measure_all)]
@@ -342,6 +345,7 @@ impl ChannelManager {
             upstream_state: AtomicUpstreamState::new(UpstreamState::SoloMining),
             send_payout_address_to_pool: config.send_payout_address_to_pool,
             coinbase_reward_script: config.coinbase_reward_script.clone(),
+            propagate_upstream_target: Arc::new(AtomicBool::new(false)),
         };
 
         Ok(channel_manager)
@@ -988,6 +992,18 @@ impl ChannelManager {
         None
     }
 
+    /// Sets whether upstream target propagation is enabled.
+    /// Called when connecting to an upstream or during failover.
+    pub fn set_propagate_upstream_target(&self, enabled: bool) {
+        info!(
+            "Upstream target propagation: {}",
+            if enabled { "ENABLED — downstream targets will be capped to upstream" }
+            else { "DISABLED — vardiff runs uncapped" }
+        );
+        self.propagate_upstream_target
+            .store(enabled, Ordering::Relaxed);
+    }
+
     /// Utility method to request for more token to JDS.
     pub async fn allocate_tokens(
         &self,
@@ -1045,6 +1061,10 @@ impl ChannelManager {
     }
 
     // Runs the vardiff on extended channel.
+    //
+    // If `upstream_target` is provided, the resulting target is capped so it
+    // never becomes easier than the upstream target. This prevents shares from
+    // being silently dropped at the upstream boundary.
     fn run_vardiff_on_extended_channel(
         downstream_id: DownstreamId,
         channel_id: ChannelId,
@@ -1054,6 +1074,7 @@ impl ChannelManager {
         >,
         vardiff_state: &mut VardiffState,
         updates: &mut Vec<RouteMessageTo>,
+        upstream_target: Option<Target>,
     ) {
         let (hashrate, target, shares_per_minute) = (
             channel_state.get_nominal_hashrate(),
@@ -1073,6 +1094,20 @@ impl ChannelManager {
 
         match channel_state.update_channel(new_hashrate, None) {
             Ok(()) => {
+                // When upstream target propagation is enabled, clamp the downstream
+                // target to match the upstream target exactly. This ensures the
+                // downstream share rate aligns with what the pool expects, preventing
+                // hashrate under-reporting (harder target → fewer shares → pool credits
+                // each share at its own target → lower reported hashrate).
+                if let Some(up_target) = upstream_target {
+                    let vardiff_target = *channel_state.get_target();
+                    if vardiff_target != up_target {
+                        info!(
+                            "Aligning extended channel {channel_id} target to upstream: vardiff={vardiff_target:?} → upstream={up_target:?}"
+                        );
+                        channel_state.set_target(up_target);
+                    }
+                }
                 let updated_target = channel_state.get_target();
                 updates.push(
                     (
@@ -1084,7 +1119,7 @@ impl ChannelManager {
                     )
                         .into(),
                 );
-                debug!("Updated target for extended channel_id={channel_id} to {updated_target:?}",);
+                info!("Vardiff: extended channel_id={channel_id} target={updated_target:?}");
             }
             Err(e) => warn!(
                 "Failed to update extended channel channel_id={channel_id} during vardiff {e:?}"
@@ -1093,12 +1128,17 @@ impl ChannelManager {
     }
 
     // Runs the vardiff on the standard channel.
+    //
+    // If `upstream_target` is provided, the resulting target is capped so it
+    // never becomes easier than the upstream target. This prevents shares from
+    // being silently dropped at the upstream boundary.
     fn run_vardiff_on_standard_channel(
         downstream_id: DownstreamId,
         channel_id: ChannelId,
         channel: &mut StandardChannel<'static, DefaultJobStore<StandardJob<'static>>>,
         vardiff_state: &mut VardiffState,
         updates: &mut Vec<RouteMessageTo>,
+        upstream_target: Option<Target>,
     ) {
         let hashrate = channel.get_nominal_hashrate();
         let target = channel.get_target();
@@ -1113,6 +1153,20 @@ impl ChannelManager {
         if let Some(new_hashrate) = new_hashrate_opt {
             match channel.update_channel(new_hashrate, None) {
                 Ok(()) => {
+                    // When upstream target propagation is enabled, clamp the downstream
+                    // target to match the upstream target exactly. This ensures the
+                    // downstream share rate aligns with what the pool expects, preventing
+                    // hashrate under-reporting (harder target → fewer shares → pool credits
+                    // each share at its own target → lower reported hashrate).
+                    if let Some(up_target) = upstream_target {
+                        let vardiff_target = *channel.get_target();
+                        if vardiff_target != up_target {
+                            info!(
+                                "Aligning standard channel {channel_id} target to upstream: vardiff={vardiff_target:?} → upstream={up_target:?}"
+                            );
+                            channel.set_target(up_target);
+                        }
+                    }
                     let updated_target = channel.get_target();
                     updates.push(
                         (
@@ -1124,7 +1178,7 @@ impl ChannelManager {
                         )
                             .into(),
                     );
-                    debug!("Updated target for standard channel channel_id={channel_id} to {updated_target:?}");
+                    info!("Vardiff: standard channel_id={channel_id} target={updated_target:?}");
                 }
                 Err(e) => warn!(
                     "Failed to update standard channel channel_id={channel_id} during vardiff {e:?}"
@@ -1159,8 +1213,23 @@ impl ChannelManager {
     //   upstream if applicable.
     async fn run_vardiff(&self) -> JDCResult<(), error::ChannelManager> {
         let mut messages: Vec<RouteMessageTo> = vec![];
+        let propagate = self.propagate_upstream_target.load(Ordering::Relaxed);
         self.channel_manager_data
             .super_safe_lock(|channel_manager_data| {
+                // Only extract upstream target for vardiff capping when propagation is enabled
+                let upstream_target = if propagate {
+                    let t = channel_manager_data
+                        .upstream_channel
+                        .as_ref()
+                        .map(|ch| *ch.get_target());
+                    if let Some(ref target) = t {
+                        info!("Vardiff cap enabled: upstream target = {target:?}");
+                    }
+                    t
+                } else {
+                    None
+                };
+
                 for (vardiff_key, vardiff_state) in channel_manager_data.vardiff.iter_mut() {
                     let channel_id = &vardiff_key.channel_id;
                     let downstream_id = &vardiff_key.downstream_id;
@@ -1177,6 +1246,7 @@ impl ChannelManager {
                                 standard_channel,
                                 vardiff_state,
                                 &mut messages,
+                                upstream_target,
                             );
                         }
                         if let Some(extended_channel) = data.extended_channels.get_mut(channel_id) {
@@ -1186,6 +1256,7 @@ impl ChannelManager {
                                 extended_channel,
                                 vardiff_state,
                                 &mut messages,
+                                upstream_target,
                             );
                         }
                     });

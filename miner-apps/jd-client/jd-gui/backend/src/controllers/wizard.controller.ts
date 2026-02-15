@@ -178,6 +178,7 @@ export async function generateFullStackConfig(req: Request, res: Response): Prom
       userIdentity,
       coinbaseAddress,
       sendPayoutAddressToPool,
+      propagateUpstreamTarget,
       bitcoinCoreDataDir,
     } = req.body;
 
@@ -263,6 +264,7 @@ debug=ipc
           authority_pubkey: authorityPubkey || '', // Pool's authority key
           pool_address: `${poolAddress}:${finalPoolPort}`,
           jd_address: `${jdsAddress}:${finalJdsPort}`,
+          propagate_upstream_target: propagateUpstreamTarget,
         },
       ],
       template_provider_type: 'Sv2Tp',

@@ -23,7 +23,7 @@ export function TemplateProviderPanel() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
-  const logsEndRef = React.useRef<HTMLDivElement>(null);
+  const logsContainerRef = React.useRef<HTMLDivElement>(null);
 
   // Fetch status periodically
   useEffect(() => {
@@ -75,10 +75,17 @@ export function TemplateProviderPanel() {
 
   // Auto-scroll logs
   useEffect(() => {
-    if (autoScroll && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
     }
   }, [logs, autoScroll]);
+
+  const handleLogsScroll = () => {
+    if (!logsContainerRef.current) return;
+    const el = logsContainerRef.current;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    setAutoScroll(atBottom);
+  };
 
   const fetchStatus = async () => {
     try {
@@ -241,7 +248,7 @@ export function TemplateProviderPanel() {
           </div>
         </div>
 
-        <div className="logs-content">
+        <div className="logs-content" ref={logsContainerRef} onScroll={handleLogsScroll}>
           {logs.length === 0 && <p className="no-logs">No logs yet. Start Template Provider to see logs.</p>}
           {logs.map((log, index) => (
             <div key={index} className={`log-entry ${getLevelClass(log.level)}`}>
@@ -250,7 +257,6 @@ export function TemplateProviderPanel() {
               <span className="log-message">{log.message}</span>
             </div>
           ))}
-          <div ref={logsEndRef} />
         </div>
       </div>
 

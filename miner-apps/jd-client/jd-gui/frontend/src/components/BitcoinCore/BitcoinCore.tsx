@@ -24,7 +24,8 @@ export function BitcoinCore() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'logs' | 'config'>('logs');
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  const prevLogsRef = useRef<string>('');
 
   useEffect(() => {
     fetchStatus();
@@ -47,13 +48,16 @@ export function BitcoinCore() {
   }, [status.running, activeTab]);
 
   useEffect(() => {
-    if (autoScroll) {
-      scrollToBottom();
+    if (autoScroll && logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
     }
   }, [logs, autoScroll]);
 
-  const scrollToBottom = () => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const handleLogsScroll = () => {
+    if (!logsContainerRef.current) return;
+    const el = logsContainerRef.current;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    setAutoScroll(atBottom);
   };
 
   const fetchStatus = async () => {
@@ -70,7 +74,8 @@ export function BitcoinCore() {
     try {
       const response = await fetch(`/api/bitcoin/logs?network=${status.network}&lines=100`);
       const data = await response.json();
-      if (data.success) {
+      if (data.success && data.logs !== prevLogsRef.current) {
+        prevLogsRef.current = data.logs;
         setLogs(data.logs);
       }
     } catch (error) {
@@ -411,9 +416,8 @@ export function BitcoinCore() {
                         </button>
                       </div>
                     </div>
-                    <div className="logs-container">
+                    <div className="logs-container" ref={logsContainerRef} onScroll={handleLogsScroll}>
                       <pre className="logs">{logs || 'No logs available'}</pre>
-                      <div ref={logsEndRef} />
                     </div>
                   </div>
                 )}

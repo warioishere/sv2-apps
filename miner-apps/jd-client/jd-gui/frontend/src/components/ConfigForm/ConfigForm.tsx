@@ -430,6 +430,23 @@ export function ConfigForm() {
                   />
                 </div>
 
+                <div className="form-group" style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={upstream.propagate_upstream_target || false}
+                      onChange={(e) => {
+                        const newUpstreams = [...config.upstreams];
+                        newUpstreams[index].propagate_upstream_target = e.target.checked;
+                        updateConfig({ upstreams: newUpstreams });
+                      }}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                    />
+                    <span>Propagate upstream target to downstream miners (Experimental)</span>
+                  </label>
+                  <small>When enabled, this pool's mining target is forwarded to downstream miners and caps vardiff targets. This prevents shares from being silently dropped, resulting in more accurate hashrate reporting at the pool.</small>
+                </div>
+
                 {config.upstreams.length > 1 && (
                   <button
                     onClick={() => {
@@ -437,6 +454,7 @@ export function ConfigForm() {
                       updateConfig({ upstreams: newUpstreams });
                     }}
                     className="btn btn-danger btn-sm"
+                    style={{ marginTop: '0.5rem' }}
                   >
                     Remove Upstream
                   </button>

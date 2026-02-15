@@ -24,6 +24,7 @@ export interface UpstreamConfig {
   authority_pubkey: string;
   pool_address: string;
   jd_address?: string;
+  propagate_upstream_target?: boolean;
 }
 
 export interface Sv2TpConfig {

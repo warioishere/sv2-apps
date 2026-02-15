@@ -24,12 +24,12 @@ export function UpdateManager() {
   const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll logs
   useEffect(() => {
-    if (showLogs && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (showLogs && logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
     }
   }, [logs, showLogs]);
 
@@ -267,13 +267,12 @@ export function UpdateManager() {
               ✕
             </button>
           </div>
-          <div className="logs-content">
+          <div className="logs-content" ref={logsContainerRef}>
             {logs.map((log, index) => (
               <div key={index} className="log-line">
                 {log}
               </div>
             ))}
-            <div ref={logsEndRef} />
           </div>
         </div>
       )}

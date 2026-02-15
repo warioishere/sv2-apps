@@ -269,7 +269,10 @@ impl JobDeclaratorClient {
             )
             .await
         {
-            Ok((upstream, job_declarator)) => {
+            Ok((upstream, job_declarator, upstream_idx)) => {
+                channel_manager_clone.set_propagate_upstream_target(
+                    self.config.upstreams()[upstream_idx].propagate_upstream_target,
+                );
                 upstream
                     .start(
                         self.config.min_supported_version(),
@@ -375,7 +378,10 @@ impl JobDeclaratorClient {
                                     )
                                     .await
                                 {
-                                    Ok((upstream, job_declarator)) => {
+                                    Ok((upstream, job_declarator, upstream_idx)) => {
+                                        channel_manager_clone.set_propagate_upstream_target(
+                                            self.config.upstreams()[upstream_idx].propagate_upstream_target,
+                                        );
                                         upstream
                                             .start(
                                                 self.config.min_supported_version(),
@@ -459,7 +465,7 @@ impl JobDeclaratorClient {
         status_sender: Sender<Status>,
         mode: ConfigJDCMode,
         task_manager: Arc<TaskManager>,
-    ) -> Result<(Upstream, JobDeclarator), JDCErrorKind> {
+    ) -> Result<(Upstream, JobDeclarator, usize), JDCErrorKind> {
         const MAX_RETRIES: usize = 3;
         let upstream_len = upstreams.len();
         for (i, upstream_addr) in upstreams.iter_mut().enumerate() {
@@ -498,7 +504,7 @@ impl JobDeclaratorClient {
                 {
                     Ok(pair) => {
                         upstream_addr.3 = true;
-                        return Ok(pair);
+                        return Ok((pair.0, pair.1, i));
                     }
                     Err(e) => {
                         let (tx, mut rx) = mpsc::channel::<()>(1);

@@ -287,6 +287,10 @@ pub struct Upstream {
     // The network address of the JDS.
     pub jds_address: String,
     pub jds_port: u16,
+    /// When enabled, propagates upstream SetTarget messages to downstream miners
+    /// and caps vardiff targets to prevent shares from being silently dropped
+    #[serde(default)]
+    pub propagate_upstream_target: bool,
 }
 
 impl Upstream {
@@ -304,6 +308,7 @@ impl Upstream {
             pool_port,
             jds_address,
             jds_port,
+            propagate_upstream_target: false,
         }
     }
 }
