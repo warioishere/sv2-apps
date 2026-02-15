@@ -1,16 +1,16 @@
 # Bitcoin Address Input Feature - Implementation Summary
 
-## ✅ Was wurde implementiert
+## What Was Implemented
 
-### Problem gelöst:
-- ❌ **Vorher:** User mussten `coinbase_reward_script` als Hex-String eingeben: `76a914abcd...88ac`
-- ✅ **Jetzt:** User geben einfach ihre Bitcoin-Adresse ein: `bc1q...`
+### Problem Solved:
+- **Before:** Users had to enter `coinbase_reward_script` as a hex string: `76a914abcd...88ac`
+- **Now:** Users simply enter their Bitcoin address: `bc1q...`
 
 ---
 
-## 🎯 User-Friendly Bitcoin Address Input
+## User-Friendly Bitcoin Address Input
 
-### Neue UI (Mining Tab):
+### New UI (Mining Tab):
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -25,10 +25,10 @@
 ```
 
 **Features:**
-- ✅ User gibt Bitcoin-Adresse ein (user-friendly)
-- ✅ Automatische Conversion → `addr()` Format
-- ✅ Generated Script wird angezeigt (read-only)
-- ✅ Funktioniert mit allen Address-Typen:
+- User enters a Bitcoin address (user-friendly)
+- Automatic conversion to `addr()` format
+- Generated script is displayed (read-only)
+- Works with all address types:
   - `bc1q...` - Bech32 (mainnet)
   - `tb1q...` - Bech32 (testnet)
   - `1...` - P2PKH (legacy)
@@ -36,11 +36,11 @@
 
 ---
 
-## 🔧 Technische Details
+## Technical Details
 
 ### 1. State Management
 
-**Neue State Variable:**
+**New state variable:**
 ```typescript
 const [bitcoinAddress, setBitcoinAddress] = useState<string>('');
 ```
@@ -64,7 +64,7 @@ const wrapAddress = (address: string): string => {
 
 ### 3. Change Handler
 
-**Automatische Conversion:**
+**Automatic conversion:**
 ```typescript
 const handleAddressChange = (address: string) => {
   setBitcoinAddress(address);
@@ -72,12 +72,12 @@ const handleAddressChange = (address: string) => {
 };
 ```
 
-**User gibt ein:** `bc1qxy2...`
-**Automatisch wird:** `addr(bc1qxy2...)`
+**User enters:** `bc1qxy2...`
+**Automatically becomes:** `addr(bc1qxy2...)`
 
 ### 4. Preset Loading Integration
 
-**Beim Laden von Presets:**
+**When loading presets:**
 ```typescript
 const handleLoadPreset = (presetConfig: ConfigInput) => {
   setConfig(presetConfig);
@@ -88,177 +88,175 @@ const handleLoadPreset = (presetConfig: ConfigInput) => {
 };
 ```
 
-**Preset enthält:** `addr(tb1qpusf5256...)`
-**User sieht:** `tb1qpusf5256...` (im Address-Feld)
+**Preset contains:** `addr(tb1qpusf5256...)`
+**User sees:** `tb1qpusf5256...` (in the address field)
 
 ---
 
-## 📝 TOML Output
+## TOML Output
 
-### Was im TOML gespeichert wird:
+### What gets saved to TOML:
 
 ```toml
-# User gibt ein: bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh
-# TOML enthält:
+# User enters: bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh
+# TOML contains:
 coinbase_reward_script = "addr(bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh)"
 ```
 
-### JD-Client Binary Verarbeitung:
+### JD-Client Binary Processing:
 
 ```
 addr(bc1q...)
-    ↓ (JD-Client parst)
-    ↓ (Konvertiert zu Bitcoin Script)
+    | (JD-Client parses)
+    | (Converts to Bitcoin script)
 0014abcd1234...  (P2WPKH Script)
-    ↓ (Im Block Template)
-    ↓ (Block gefunden)
-    ↓ (Reward geht an)
-bc1q...  ✅
+    | (In block template)
+    | (Block found)
+    | (Reward goes to)
+bc1q...
 ```
 
 ---
 
-## 🎨 CSS Styling
+## CSS Styling
 
 **Disabled Field (Generated Script):**
 ```css
 .form-group input.disabled-field {
-  background: #f1f5f9;      /* Grauer Hintergrund */
-  color: #64748b;           /* Gedimmter Text */
-  cursor: not-allowed;      /* Kein Edit-Cursor */
-  font-family: monospace;   /* Code-Font */
+  background: #f1f5f9;      /* Gray background */
+  color: #64748b;           /* Dimmed text */
+  cursor: not-allowed;      /* No edit cursor */
+  font-family: monospace;   /* Code font */
   font-size: 12px;
 }
 ```
 
 ---
 
-## 📋 Geänderte Dateien
+## Changed Files
 
-**Frontend (2 Dateien):**
-1. ✅ `frontend/src/components/ConfigForm/ConfigForm.tsx`
-   - Neue state: `bitcoinAddress`
+**Frontend (2 files):**
+1. `frontend/src/components/ConfigForm/ConfigForm.tsx`
+   - New state: `bitcoinAddress`
    - Helper functions: `extractAddress()`, `wrapAddress()`
    - Change handler: `handleAddressChange()`
    - Updated preset loader
    - Replaced coinbase_reward_script input
 
-2. ✅ `frontend/src/components/ConfigForm/ConfigForm.css`
+2. `frontend/src/components/ConfigForm/ConfigForm.css`
    - Added `.disabled-field` styling
 
 ---
 
-## 🧪 Testing
+## Testing
 
-### Test 1: Manuelle Address Eingabe
+### Test 1: Manual Address Entry
 ```
-1. Browser → http://localhost:3000
-2. Configuration Tab → Mining
+1. Browser -> http://localhost:3000
+2. Configuration Tab -> Mining
 3. Bitcoin Reward Address: bc1qtest123...
-4. Generated Script sollte zeigen: addr(bc1qtest123...)
+4. Generated Script should show: addr(bc1qtest123...)
 5. Save Configuration
-6. TOML sollte enthalten: coinbase_reward_script = "addr(bc1qtest123...)"
+6. TOML should contain: coinbase_reward_script = "addr(bc1qtest123...)"
 ```
 
-### Test 2: Preset Laden
+### Test 2: Loading a Preset
 ```
 1. Load Preset: "Testnet4 - Hosted - Sv2 TP"
-2. Bitcoin Reward Address Feld sollte zeigen: tb1qpusf5256...
-3. Generated Script sollte zeigen: addr(tb1qpusf5256...)
-4. User kann Address ändern
-5. Generated Script updated automatisch
+2. Bitcoin Reward Address field should show: tb1qpusf5256...
+3. Generated Script should show: addr(tb1qpusf5256...)
+4. User can change the address
+5. Generated Script updates automatically
 ```
 
 ### Test 3: Address Types
 ```
-Test verschiedene Address-Typen:
-- bc1q... (Bech32 mainnet) ✅
-- tb1q... (Bech32 testnet) ✅
-- 1... (P2PKH legacy) ✅
-- 3... (P2SH) ✅
-- bc1p... (Taproot) ✅
+Test different address types:
+- bc1q... (Bech32 mainnet)
+- tb1q... (Bech32 testnet)
+- 1... (P2PKH legacy)
+- 3... (P2SH)
+- bc1p... (Taproot)
 ```
 
 ---
 
-## ✅ Vorteile
+## Benefits
 
-**User-Freundlichkeit:**
-- ✅ Keine Hex-Strings mehr!
-- ✅ Einfache Copy-Paste von Bitcoin-Address
-- ✅ Sofortige Validierung (visuell)
-- ✅ Transparenz (Generated Script sichtbar)
+**User-Friendliness:**
+- No more hex strings!
+- Simple copy-paste of Bitcoin address
+- Instant validation (visual)
+- Transparency (generated script visible)
 
-**Sicherheit:**
-- ✅ Kein Tippen von Hex → weniger Fehler
-- ✅ Address-Format ist vertrauter
-- ✅ User kann verifizieren was gespeichert wird
+**Security:**
+- No typing hex -> fewer errors
+- Address format is more familiar
+- User can verify what gets saved
 
-**Kompatibilität:**
-- ✅ Nutzt JD-Client's `addr()` Format
-- ✅ Funktioniert mit allen Address-Typen
-- ✅ Backward-compatible mit bestehenden Configs
+**Compatibility:**
+- Uses JD-Client's `addr()` format
+- Works with all address types
+- Backward-compatible with existing configs
 
 ---
 
-## 🚀 Workflow
+## Workflow
 
-### Erstmaliges Setup:
+### First-Time Setup:
 ```
-1. User öffnet GUI
-2. Geht zu Configuration → Mining
-3. Gibt Bitcoin Address ein: bc1q...
-4. Sieht sofort Generated Script: addr(bc1q...)
+1. User opens GUI
+2. Goes to Configuration -> Mining
+3. Enters Bitcoin address: bc1q...
+4. Immediately sees Generated Script: addr(bc1q...)
 5. Save Configuration
-6. ✅ Fertig!
+6. Done!
 ```
 
-### Mit Preset:
+### With Preset:
 ```
-1. User wählt Preset: "Testnet4 - Hosted - Sv2 TP"
+1. User selects Preset: "Testnet4 - Hosted - Sv2 TP"
 2. Load Preset
-3. Bitcoin Address Feld zeigt: tb1qpusf5256...
-4. User kann eigene Address eingeben
+3. Bitcoin Address field shows: tb1qpusf5256...
+4. User can enter their own address
 5. Save Configuration
-6. ✅ Fertig!
+6. Done!
 ```
 
 ---
 
-## 📊 Vergleich: Vorher vs. Nachher
+## Comparison: Before vs. After
 
-### Vorher (Hex Script):
+### Before (Hex Script):
 ```
 Label: Coinbase Reward Script
 Input: 76a914abcd1234567890...88ac
-User: "WTF ist das?!" 😵
+User: "WTF is this?!"
 ```
 
-### Nachher (Bitcoin Address):
+### After (Bitcoin Address):
 ```
 Label: Bitcoin Reward Address
 Input: bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh
-User: "Ah, meine Bitcoin-Adresse!" 😊
+User: "Ah, my Bitcoin address!"
 
 Generated Script (read-only): addr(bc1qxy2...)
-User: "Cool, ich sehe was passiert!" 👍
+User: "Cool, I can see what's happening!"
 ```
 
 ---
 
-## 🎯 Zusammenfassung
-
-**Implementiert in:** 5 Minuten ⚡
+## Summary
 
 **Impact:**
-- Massiv verbesserte User Experience
-- Reduziert Fehlerquellen
-- Macht Solo Mining Setup zugänglich
+- Massively improved user experience
+- Reduces error sources
+- Makes solo mining setup accessible
 
-**Status:** ✅ **Production Ready**
+**Status:** Production Ready
 
 ---
 
-**Die Bitcoin Address wird im JD-Client konfiguriert, NICHT im Miner!**
+**The Bitcoin address is configured in JD-Client, NOT in the miner!**
 
-Der SV2 Miner (z.B. jd-miner) bekommt Arbeit vom JD-Client und weiß nicht, wohin die Rewards gehen. Die Reward-Address ist Teil des Block Templates, das der JD-Client erstellt.
+The SV2 miner (e.g. jd-miner) receives work from JD-Client and doesn't know where the rewards go. The reward address is part of the block template that JD-Client creates.

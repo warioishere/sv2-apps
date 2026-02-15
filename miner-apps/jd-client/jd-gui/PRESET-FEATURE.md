@@ -1,19 +1,19 @@
 # Preset Config Feature - Implementation Summary
 
-## ✅ Was wurde implementiert
+## What Was Implemented
 
-### Feature: Automatisches Laden von Pool & Template Provider Keys aus Beispiel-Configs
+### Feature: Automatic Loading of Pool & Template Provider Keys from Example Configs
 
-**Problem gelöst:**
-- User müssen nicht mehr manuell Keys von Pool/JDS/Template Provider beschaffen
-- Offizielle Beispiel-Konfigurationen können direkt geladen werden
-- Alle Felder bleiben nach dem Laden editierbar (manuelle Eingabe möglich)
+**Problem solved:**
+- Users no longer need to manually obtain keys from Pool/JDS/Template Provider
+- Official example configurations can be loaded directly
+- All fields remain editable after loading (manual entry still possible)
 
 ---
 
-## 🏗️ Backend Implementation
+## Backend Implementation
 
-### 1. TOML Parser hinzugefügt
+### 1. TOML Parser Added
 **File:** `backend/package.json`
 ```json
 {
@@ -27,15 +27,15 @@
 **File:** `backend/src/services/config-examples.service.ts`
 
 **Features:**
-- Liest alle TOML-Dateien aus `/app/config-examples/`
-- Parst TOML → `ConfigInput` Format
-- Kategorisiert nach:
+- Reads all TOML files from `/app/config-examples/`
+- Parses TOML into `ConfigInput` format
+- Categorizes by:
   - Network (mainnet, testnet4, signet)
   - Infrastructure (local, hosted)
   - Template Provider (Sv2Tp, BitcoinCoreIpc)
-- Generiert beschreibende Namen automatisch
+- Generates descriptive names automatically
 
-**Verfügbare Beispiele (10 Configs):**
+**Available examples (10 configs):**
 ```
 Mainnet - Local - Sv2 TP
 Mainnet - Local - Bitcoin Core
@@ -56,22 +56,22 @@ Signet - Local - Bitcoin Core
 - `backend/src/controllers/config-examples.controller.ts`
 - `backend/src/routes/config-examples.routes.ts`
 
-**Neue Endpoints:**
+**New endpoints:**
 ```
 GET /api/config-examples
-→ Liste aller verfügbaren Examples
+-> List of all available examples
 
 GET /api/config-examples/filter?network=testnet4&infrastructure=hosted
-→ Gefilterte Liste
+-> Filtered list
 
 GET /api/config-examples/:id
-→ Parsed Config als ConfigInput JSON
+-> Parsed config as ConfigInput JSON
 
 GET /api/config-examples/:id/toml
-→ Raw TOML content
+-> Raw TOML content
 ```
 
-**Beispiel Response:**
+**Example response:**
 ```json
 {
   "examples": [
@@ -89,21 +89,21 @@ GET /api/config-examples/:id/toml
 
 ### 4. Server Integration
 **File:** `backend/src/index.ts`
-- Route registriert: `app.use('/api/config-examples', configExamplesRoutes)`
+- Route registered: `app.use('/api/config-examples', configExamplesRoutes)`
 
 ### 5. Dockerfile Update
 **File:** `backend/Dockerfile`
 ```dockerfile
-# Config-Examples ins Container kopieren
+# Copy config examples into container
 COPY miner-apps/jd-client/config-examples /app/config-examples
 ```
 
-**Environment Variable:**
-- `CONFIG_EXAMPLES_PATH` - Pfad zu Examples (default: `/app/config-examples`)
+**Environment variable:**
+- `CONFIG_EXAMPLES_PATH` - Path to examples (default: `/app/config-examples`)
 
 ---
 
-## 🎨 Frontend Implementation
+## Frontend Implementation
 
 ### 1. PresetSelector Component
 **Files:**
@@ -111,11 +111,11 @@ COPY miner-apps/jd-client/config-examples /app/config-examples
 - `frontend/src/components/ConfigForm/PresetSelector.css`
 
 **Features:**
-- Dropdown mit allen verfügbaren Examples
-- "Load Preset" Button
-- Beschreibung des ausgewählten Presets
-- Error Handling
-- Loading States
+- Dropdown with all available examples
+- "Load Preset" button
+- Description of selected preset
+- Error handling
+- Loading states
 
 **UI:**
 ```
@@ -125,14 +125,14 @@ COPY miner-apps/jd-client/config-examples /app/config-examples
 │                                                      │
 │ [Select configuration example ▼] [Load Preset]      │
 │                                                      │
-│ ℹ Config for Bitcoin Testnet4 using hosted...      │
+│ i Config for Bitcoin Testnet4 using hosted...        │
 └─────────────────────────────────────────────────────┘
 ```
 
 ### 2. API Service Update
 **File:** `frontend/src/services/api.service.ts`
 
-**Neue Methoden:**
+**New methods:**
 ```typescript
 async getConfigExamples()
 async getConfigExample(id: string)
@@ -146,9 +146,9 @@ async getConfigExampleToml(id: string)
 ```typescript
 import { PresetSelector } from './PresetSelector';
 
-// Handler für Preset-Laden
+// Handler for loading presets
 const handleLoadPreset = (presetConfig: ConfigInput) => {
-  setConfig(presetConfig);  // ← Füllt alle Felder
+  setConfig(presetConfig);  // <- Fills all fields
   setMessage({ type: 'success', text: 'Preset loaded!' });
 };
 
@@ -156,117 +156,117 @@ const handleLoadPreset = (presetConfig: ConfigInput) => {
 <PresetSelector onLoadPreset={handleLoadPreset} />
 ```
 
-**Verhalten:**
-1. User wählt Preset aus Dropdown
-2. Klickt "Load Preset"
-3. **Alle Formular-Felder werden gefüllt** mit:
-   - Pool Authority Public Keys ✅
-   - Pool Addresses ✅
-   - Template Provider Keys ✅
-   - Alle anderen Config-Werte ✅
-4. **User kann ALLES editieren** - keine Felder sind gesperrt
-5. User kann "Save Configuration" klicken
+**Behavior:**
+1. User selects preset from dropdown
+2. Clicks "Load Preset"
+3. **All form fields are populated** with:
+   - Pool Authority Public Keys
+   - Pool Addresses
+   - Template Provider Keys
+   - All other config values
+4. **User can edit everything** - no fields are locked
+5. User can click "Save Configuration"
 
 ---
 
-## 🔑 Was die Presets enthalten
+## What the Presets Contain
 
-### Beispiel: "Testnet4 - Hosted - Sv2 TP"
+### Example: "Testnet4 - Hosted - Sv2 TP"
 
-Automatisch gefüllt werden:
+Automatically populated:
 ```toml
-# Pool Keys (automatisch!)
+# Pool Keys (automatic!)
 [[upstreams]]
 authority_pubkey = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72"
 pool_address = "testnet.demand.sv2.io:34254"
 jd_address = "testnet.demand.sv2.io:34265"
 
-# Template Provider Keys (automatisch!)
+# Template Provider Keys (automatic!)
 [template_provider.Sv2Tp]
 address = "testnet.demand.sv2.io:8442"
 public_key = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72"
 
-# Authority Keys (automatisch!)
+# Authority Keys (automatic!)
 authority_public_key = "..."
 authority_secret_key = "..."
 
-# User muss nur noch eingeben:
-# - user_identity (z.B. "mein-miner")
-# - coinbase_reward_script (Bitcoin Address)
+# User only needs to enter:
+# - user_identity (e.g. "my-miner")
+# - coinbase_reward_script (Bitcoin address)
 ```
 
 ---
 
-## 📝 User Workflow
+## User Workflow
 
-### Option 1: Mit Preset starten (Empfohlen)
+### Option 1: Start with Preset (Recommended)
 ```
-1. Browser → Configuration Tab
-2. Dropdown: "Testnet4 - Hosted - Sv2 TP" wählen
-3. "Load Preset" klicken
-4. ✅ Pool Keys automatisch gefüllt
-5. ✅ Template Provider Keys automatisch gefüllt
-6. Nur noch user_identity + coinbase_reward_script eingeben
-7. "Save Configuration" klicken
-8. ✅ Fertig!
-```
-
-### Option 2: Manuell (weiterhin möglich)
-```
-1. Browser → Configuration Tab
-2. Alle Tabs durchgehen
-3. Alle Felder manuell ausfüllen
-4. "Save Configuration" klicken
+1. Browser -> Configuration Tab
+2. Dropdown: Select "Testnet4 - Hosted - Sv2 TP"
+3. Click "Load Preset"
+4. Pool Keys automatically populated
+5. Template Provider Keys automatically populated
+6. Only need to enter user_identity + coinbase_reward_script
+7. Click "Save Configuration"
+8. Done!
 ```
 
-### Option 3: Preset laden + anpassen
+### Option 2: Manual (still possible)
 ```
-1. Preset laden
-2. Felder nach Bedarf ändern (z.B. anderen Pool)
-3. "Save Configuration" klicken
+1. Browser -> Configuration Tab
+2. Go through all tabs
+3. Fill in all fields manually
+4. Click "Save Configuration"
+```
+
+### Option 3: Load Preset + Customize
+```
+1. Load Preset
+2. Modify fields as needed (e.g. different pool)
+3. Click "Save Configuration"
 ```
 
 ---
 
-## ✅ Dateien erstellt/geändert
+## Files Created/Changed
 
-**Backend (4 neue Dateien):**
-- ✅ `services/config-examples.service.ts` - Service
-- ✅ `controllers/config-examples.controller.ts` - Controller
-- ✅ `routes/config-examples.routes.ts` - Routes
-- ✅ `package.json` - @iarna/toml dependency
+**Backend (4 new files):**
+- `services/config-examples.service.ts` - Service
+- `controllers/config-examples.controller.ts` - Controller
+- `routes/config-examples.routes.ts` - Routes
+- `package.json` - @iarna/toml dependency
 
-**Backend (3 geänderte Dateien):**
-- ✅ `index.ts` - Route registriert
-- ✅ `Dockerfile` - Config-Examples kopiert
-- ✅ Pfad konfigurierbar via ENV
+**Backend (3 changed files):**
+- `index.ts` - Route registered
+- `Dockerfile` - Config examples copied
+- Path configurable via ENV
 
-**Frontend (3 neue Dateien):**
-- ✅ `components/ConfigForm/PresetSelector.tsx`
-- ✅ `components/ConfigForm/PresetSelector.css`
-- ✅ `services/api.service.ts` - Neue Methoden
+**Frontend (3 new files):**
+- `components/ConfigForm/PresetSelector.tsx`
+- `components/ConfigForm/PresetSelector.css`
+- `services/api.service.ts` - New methods
 
-**Frontend (1 geänderte Datei):**
-- ✅ `components/ConfigForm/ConfigForm.tsx` - Integration
+**Frontend (1 changed file):**
+- `components/ConfigForm/ConfigForm.tsx` - Integration
 
-**Dokumentation:**
-- ✅ `PRESET-FEATURE.md` (diese Datei)
+**Documentation:**
+- `PRESET-FEATURE.md` (this file)
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ```bash
-# Build mit Preset Feature
+# Build with preset feature
 docker-compose build
 
 # Start
 docker-compose up -d
 
-# Test 1: Liste aller Examples
+# Test 1: List all examples
 curl http://localhost:3000/api/config-examples
 
-# Test 2: Specific Example laden
+# Test 2: Load specific example
 curl http://localhost:3000/api/config-examples/testnet4-jdc-config-hosted-infra-example
 
 # Test 3: Raw TOML
@@ -274,65 +274,65 @@ curl http://localhost:3000/api/config-examples/testnet4-jdc-config-hosted-infra-
 
 # Test 4: Frontend
 # Browser: http://localhost:3000
-# → Configuration Tab
-# → Dropdown sollte 10 Examples zeigen
-# → Eines auswählen und laden
-# → Alle Felder sollten gefüllt sein
+# -> Configuration Tab
+# -> Dropdown should show 10 examples
+# -> Select one and load
+# -> All fields should be populated
 ```
 
 ---
 
-## 🎯 Vorteile
+## Benefits
 
-✅ **Keine manuelle Key-Beschaffung nötig**
-- User müssen nicht zu Pool-Websites gehen
-- Keine Copy-Paste Fehler
+**No manual key retrieval needed**
+- Users don't need to visit pool websites
+- No copy-paste errors
 
-✅ **Offiziell verifiziert**
-- Verwendet die offiziellen Beispiel-Configs aus dem Repo
-- Immer aktuell (bei Rebuild)
+**Officially verified**
+- Uses the official example configs from the repo
+- Always up to date (on rebuild)
 
-✅ **Flexibel**
-- 10 verschiedene Kombinationen verfügbar
-- Alle Felder editierbar nach dem Laden
-- Manuelle Eingabe weiterhin möglich
+**Flexible**
+- 10 different combinations available
+- All fields editable after loading
+- Manual entry still possible
 
-✅ **User-freundlich**
-- Ein Klick → fertige Config
-- Klare Beschreibungen
-- Keine technische Expertise nötig
+**User-friendly**
+- One click -> ready-made config
+- Clear descriptions
+- No technical expertise required
 
-✅ **Wartbar**
-- Examples zentral im Repo
-- Automatisches Parsen
-- Keine Hardcoded-Keys in GUI
+**Maintainable**
+- Examples centralized in repo
+- Automatic parsing
+- No hardcoded keys in GUI
 
 ---
 
-## 🚀 Nächste Schritte
+## Next Steps
 
-Das Feature ist **vollständig implementiert**!
+The feature is **fully implemented**!
 
-**Zum Testen:**
+**To test:**
 ```bash
-cd /home/warioishere/github_repos/sv2-apps/miner-apps/jd-client/jd-gui
+cd /path/to/sv2-apps/miner-apps/jd-client/jd-gui
 docker-compose build
 docker-compose up -d
 ```
 
-**Im Browser:**
+**In the browser:**
 1. http://localhost:3000
 2. Configuration Tab
-3. "Load from Preset" Section oben
-4. Dropdown öffnen → sollte 10 Optionen zeigen
-5. Eine wählen → "Load Preset" klicken
-6. Formular sollte automatisch gefüllt werden ✅
+3. "Load from Preset" section at the top
+4. Open dropdown -> should show 10 options
+5. Select one -> click "Load Preset"
+6. Form should be automatically populated
 
-**Manuelle Eingabe:**
-- Funktioniert weiterhin genau wie vorher
-- Alle Felder editierbar
-- Keys können manuell eingegeben werden
+**Manual entry:**
+- Still works exactly as before
+- All fields editable
+- Keys can be entered manually
 
 ---
 
-**Status:** ✅ Production Ready!
+**Status:** Production Ready!
