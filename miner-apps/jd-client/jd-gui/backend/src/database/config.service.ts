@@ -131,7 +131,21 @@ export class ConfigurationService {
 
   // Parse config JSON
   parseConfig(savedConfig: SavedConfiguration): ConfigInput {
-    return JSON.parse(savedConfig.config_json) as ConfigInput;
+    const config = JSON.parse(savedConfig.config_json) as ConfigInput;
+
+    // Migrate old mode values to new ones
+    if ((config.mode as any) === 'independent') {
+      config.mode = 'COINBASEONLY';
+    } else if ((config.mode as any) === 'aggregated') {
+      config.mode = 'FULLTEMPLATE';
+    }
+
+    // Migrate old share_batch_size values (3 or 10) to new standard of 1
+    if (config.share_batch_size === 3 || config.share_batch_size === 10) {
+      config.share_batch_size = 1;
+    }
+
+    return config;
   }
 }
 

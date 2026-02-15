@@ -21,6 +21,8 @@ export interface ConfigInput {
   send_payout_address_to_pool?: boolean;
   supported_extensions?: number[];
   required_extensions?: number[];
+  // GUI-only setting (not written to TOML)
+  report_downstream_miners?: boolean;
 }
 
 export interface UpstreamConfig {

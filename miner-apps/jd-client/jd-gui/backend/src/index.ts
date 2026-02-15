@@ -31,6 +31,7 @@ import configExamplesRoutes from './routes/config-examples.routes';
 import wizardRoutes from './routes/wizard.routes';
 import tpRoutes from './routes/tp.routes';
 import bitcoinRoutes from './routes/bitcoin.routes';
+import downstreamRoutes from './routes/downstream.routes';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -70,6 +71,7 @@ app.use('/api/config-examples', configExamplesRoutes);
 app.use('/api/wizard', wizardRoutes);
 app.use('/api/tp', tpRoutes);
 app.use('/api/bitcoin', bitcoinRoutes);
+app.use('/api/downstream', downstreamRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

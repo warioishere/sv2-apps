@@ -3,6 +3,8 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
+import { downstreamTracker } from './downstream-tracker.service';
+import { downstreamReporter } from './downstream-reporter.service';
 
 interface ProcessStatus {
   running: boolean;
@@ -76,6 +78,7 @@ export class JdClientProcessManager extends EventEmitter {
         // Wait a bit to ensure process started successfully
         setTimeout(() => {
           if (this.process && this.process.pid) {
+            downstreamReporter.start();
             resolve({ success: true, pid: this.process.pid });
           } else {
             resolve({ success: false, error: 'Process failed to start' });
@@ -169,6 +172,9 @@ export class JdClientProcessManager extends EventEmitter {
         this.logBuffer.shift();
       }
 
+      // Track downstream miner connections/disconnections
+      downstreamTracker.handleLogLine(logEntry);
+
       this.emit('log', logEntry);
       logger.info(`[JDC] ${line}`);
     }
@@ -192,6 +198,8 @@ export class JdClientProcessManager extends EventEmitter {
   private cleanup() {
     this.process = null;
     this.startTime = null;
+    downstreamTracker.reset();
+    downstreamReporter.stop();
   }
 }
 

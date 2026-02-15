@@ -117,8 +117,8 @@ cat > /tmp/test-config.json << 'EOF'
   "cert_validity_sec": 3600,
   "user_identity": "test-miner",
   "shares_per_minute": 60,
-  "share_batch_size": 3,
-  "mode": "independent",
+  "share_batch_size": 1,
+  "mode": "FULLTEMPLATE",
   "jdc_signature": "deadbeef",
   "coinbase_reward_script": "76a914deadbeef88ac",
   "upstreams": [
