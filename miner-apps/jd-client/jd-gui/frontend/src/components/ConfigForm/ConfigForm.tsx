@@ -34,6 +34,7 @@ const defaultConfig: ConfigInput = {
   },
   monitoring_address: '',
   send_payout_address_to_pool: true,
+  report_downstream_miners: false,
 };
 
 type TabId = 'basic' | 'encryption' | 'mining' | 'upstreams' | 'template' | 'advanced';
@@ -331,6 +332,19 @@ export function ConfigForm() {
                 <span>Send payout address to pool (Solo Mining Pool Support)</span>
               </label>
               <small>Enable this for solo mining pools to receive rewards directly to your address</small>
+            </div>
+
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={config.report_downstream_miners || false}
+                  onChange={(e) => updateConfig({ report_downstream_miners: e.target.checked })}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                <span>Report downstream miners to pool</span>
+              </label>
+              <small>Report connected miner details (vendor, hashrate) to the pool so actual device types appear in pool stats instead of jd-client/sv2</small>
             </div>
 
             <div className="form-row">

@@ -17,6 +17,7 @@ export interface ConfigInput {
   bitcoin_core_ipc?: BitcoinCoreIpcConfig;
   monitoring_address?: string;
   send_payout_address_to_pool?: boolean;
+  report_downstream_miners?: boolean;
 }
 
 export interface UpstreamConfig {

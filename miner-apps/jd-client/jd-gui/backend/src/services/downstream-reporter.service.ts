@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { logger } from '../utils/logger';
 import { downstreamTracker } from './downstream-tracker.service';
 import { configService } from '../database/config.service';
@@ -90,19 +91,12 @@ export class DownstreamReporterService {
     };
 
     try {
-      const response = await fetch(url, {
-        method: 'POST',
+      const response = await axios.post(url, payload, {
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(10_000),
+        timeout: 10_000,
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        logger.info(`[DownstreamReporter] Report sent: ${miners.length} miners, accepted=${result.accepted}`);
-      } else {
-        logger.warn(`[DownstreamReporter] Report failed: HTTP ${response.status}`);
-      }
+      logger.info(`[DownstreamReporter] Report sent: ${miners.length} miners, accepted=${response.data.accepted}`);
     } catch (err) {
       const error = err as Error;
       logger.warn(`[DownstreamReporter] Report failed: ${error.message}`);
