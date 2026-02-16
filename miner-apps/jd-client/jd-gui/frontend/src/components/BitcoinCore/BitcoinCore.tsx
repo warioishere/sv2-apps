@@ -39,13 +39,13 @@ export function BitcoinCore() {
       const interval = setInterval(fetchLogs, 3000);
       return () => clearInterval(interval);
     }
-  }, [status.running, activeTab]);
+  }, [status.running, status.network, activeTab]);
 
   useEffect(() => {
-    if (status.running && activeTab === 'config' && !config) {
+    if (status.running && activeTab === 'config') {
       loadConfig();
     }
-  }, [status.running, activeTab]);
+  }, [status.running, status.network, activeTab]);
 
   useEffect(() => {
     if (autoScroll && logsContainerRef.current) {
@@ -200,6 +200,7 @@ export function BitcoinCore() {
         });
         setLogs('');
         setConfig('');
+        prevLogsRef.current = ''; // Clear previous logs reference
         await fetchStatus();
       } else {
         setMessage({ type: 'error', text: startResult.message || `Failed to start ${targetNetwork}` });

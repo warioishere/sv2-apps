@@ -239,13 +239,6 @@ class MonitoringService {
       this.lastGlobalData = globalRes.data;
       this.monitoringReachable = true;
 
-      // Record global hashrate (use server hashrate, treat negative as 0)
-      const serverHashrate = Math.max(0, globalRes.data.server?.total_hashrate ?? 0);
-      this.globalHistory.push({
-        timestamp: now,
-        hashrate: serverHashrate,
-      });
-
       // Fetch clients and their channels for per-miner data
       const newChannelData = new Map<string, MinerChannelData>();
       try {
@@ -335,7 +328,8 @@ class MonitoringService {
   }
 
   getDashboard(): MonitoringDashboard {
-    const miners = downstreamTracker.getConnectedMiners();
+    // Use getEnrichedMiners() to get the filtered (non-stale) miner count
+    const enrichedMiners = this.getEnrichedMiners();
 
     // Pool status: connected = monitoring reachable (JDC is running and connected to pool)
     // disconnected = monitoring unreachable (JDC not running)
@@ -356,7 +350,7 @@ class MonitoringService {
     }
 
     return {
-      minerCount: miners.length,
+      minerCount: enrichedMiners.length,
       totalHashrate,
       poolStatus,
       uptimeSecs: this.lastGlobalData?.uptime_secs ?? 0,
@@ -367,28 +361,41 @@ class MonitoringService {
 
   getEnrichedMiners(): EnrichedMiner[] {
     const trackedMiners = downstreamTracker.getConnectedMiners();
+    const now = Date.now();
+    const STALE_THRESHOLD_MS = 30_000; // 30 seconds
 
-    return trackedMiners.map((miner: ConnectedMiner) => {
-      const channelData = this.lastChannelData.get(miner.userIdentity);
+    return trackedMiners
+      .filter((miner: ConnectedMiner) => {
+        // If the monitoring API has channel data for this miner, it's active
+        if (this.lastChannelData.has(miner.userIdentity)) return true;
+        // If recently connected, give it time to appear in monitoring API
+        const connectedAge = now - new Date(miner.connectedAt).getTime();
+        if (connectedAge < STALE_THRESHOLD_MS) return true;
+        // Stale: no monitoring data and connected too long ago - remove from tracker
+        downstreamTracker.removeMiner(miner.downstreamId);
+        return false;
+      })
+      .map((miner: ConnectedMiner) => {
+        const channelData = this.lastChannelData.get(miner.userIdentity);
 
-      return {
-        downstreamId: miner.downstreamId,
-        vendor: miner.vendor,
-        hardwareVersion: miner.hardwareVersion,
-        firmware: miner.firmware,
-        deviceId: miner.deviceId,
-        userIdentity: miner.userIdentity,
-        nominalHashRate: miner.nominalHashRate,
-        connectedAt: miner.connectedAt,
-        clientId: channelData?.clientId,
-        channelId: channelData?.channelId,
-        sharesAccepted: channelData?.sharesAccepted ?? 0,
-        bestDiff: channelData?.bestDiff ?? 0,
-        currentHashrate: channelData?.currentHashrate ?? 0,
-        shareWorkSum: channelData?.shareWorkSum ?? 0,
-        expectedSharesPerMinute: channelData?.expectedSharesPerMinute ?? 0,
-      };
-    });
+        return {
+          downstreamId: miner.downstreamId,
+          vendor: miner.vendor,
+          hardwareVersion: miner.hardwareVersion,
+          firmware: miner.firmware,
+          deviceId: miner.deviceId,
+          userIdentity: miner.userIdentity,
+          nominalHashRate: miner.nominalHashRate,
+          connectedAt: miner.connectedAt,
+          clientId: channelData?.clientId,
+          channelId: channelData?.channelId,
+          sharesAccepted: channelData?.sharesAccepted ?? 0,
+          bestDiff: channelData?.bestDiff ?? 0,
+          currentHashrate: channelData?.currentHashrate ?? 0,
+          shareWorkSum: channelData?.shareWorkSum ?? 0,
+          expectedSharesPerMinute: channelData?.expectedSharesPerMinute ?? 0,
+        };
+      });
   }
 
   getGlobalHashrateHistory(): HashrateDataPoint[] {

@@ -57,18 +57,36 @@ export class TpProcessManager extends EventEmitter {
       const realDatadir = datadirMatch ? datadirMatch[1].trim() : '/bitcoin-ipc-mainnet';
       const writableDatadir = '/app/data/sv2-tp/datadir';
 
+      // Detect which network from config (testnet4=1, signet=1, regtest=1, or mainnet default)
+      const isTestnet4 = /^testnet4=1$/m.test(configContent);
+      const isSignet = /^signet=1$/m.test(configContent);
+      const isRegtest = /^regtest=1$/m.test(configContent);
+      const chainSubdir = isTestnet4 ? 'testnet4' : isSignet ? 'signet' : isRegtest ? 'regtest' : '';
+
       try {
         if (!fs.existsSync(writableDatadir)) {
           fs.mkdirSync(writableDatadir, { recursive: true });
         }
-        // Symlink node.sock from the real Bitcoin Core datadir
-        const symlinkPath = path.join(writableDatadir, 'node.sock');
+
+        // sv2-tp uses datadir/<chain>/ as working dir for non-mainnet chains
+        // Symlink node.sock in the directory sv2-tp will actually use
+        const socketDir = chainSubdir ? path.join(writableDatadir, chainSubdir) : writableDatadir;
+        if (!fs.existsSync(socketDir)) {
+          fs.mkdirSync(socketDir, { recursive: true });
+        }
+
+        const symlinkPath = path.join(socketDir, 'node.sock');
         const realSocket = path.join(realDatadir, 'node.sock');
         if (fs.existsSync(realSocket)) {
-          // Remove stale symlink if it exists
           try { fs.unlinkSync(symlinkPath); } catch (_) { /* doesn't exist */ }
           fs.symlinkSync(realSocket, symlinkPath);
           logger.info(`Symlinked ${symlinkPath} -> ${realSocket}`);
+        }
+
+        // Also symlink at root for mainnet compatibility (remove stale if switching)
+        if (chainSubdir) {
+          const rootSymlink = path.join(writableDatadir, 'node.sock');
+          try { fs.unlinkSync(rootSymlink); } catch (_) { /* doesn't exist */ }
         }
       } catch (e) {
         logger.warn(`Writable datadir setup: ${(e as Error).message}`);

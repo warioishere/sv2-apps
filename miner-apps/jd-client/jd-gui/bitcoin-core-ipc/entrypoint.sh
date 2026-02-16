@@ -24,9 +24,12 @@ if [ "$(id -u)" = '0' ]; then
     # Create default bitcoin.conf if it doesn't exist
     if [ ! -f "$CONF_FILE" ]; then
         echo "Creating default bitcoin.conf at $CONF_FILE..."
-        cat > "$CONF_FILE" <<EOF
+
+        if [ "$NETWORK" = "mainnet" ]; then
+            # Mainnet: all settings at root level
+            cat > "$CONF_FILE" <<EOF
 # Bitcoin Core Configuration
-# Network: $NETWORK
+# Network: mainnet
 # Created by entrypoint.sh
 
 # Server settings
@@ -50,15 +53,49 @@ maxmempool=300
 # ZMQ settings
 zmqpubhashblock=tcp://0.0.0.0:28332
 
-# Network
-$(if [ "$NETWORK" = "mainnet" ]; then echo "chain=main"; else echo "chain=$NETWORK"; fi)
+# Additional settings (edit via GUI)
+EOF
+        else
+            # Testnet/regtest/signet: use network-specific sections
+            # Network name is already correct for section name (testnet4, regtest, signet)
+            SECTION_NAME="$NETWORK"
+
+            cat > "$CONF_FILE" <<EOF
+# Bitcoin Core Configuration
+# Network: $NETWORK
+# Created by entrypoint.sh
+
+# Global settings
+server=1
+chain=$NETWORK
+
+# Network-specific settings
+[$SECTION_NAME]
+rpcuser=$RPC_USER
+rpcpassword=$RPC_PASSWORD
+rpcallowip=0.0.0.0/0
+rpcbind=0.0.0.0
+rpcport=$(if [ "$NETWORK" = "testnet4" ]; then echo 48332; elif [ "$NETWORK" = "regtest" ]; then echo 18443; elif [ "$NETWORK" = "signet" ]; then echo 38332; else echo 8332; fi)
+
+# IPC settings (required for Template Provider)
+ipcbind=unix:/home/bitcoin/.bitcoin/ipc/node.sock
+
+# Performance settings
+prune=550
+txindex=0
+dbcache=450
+maxmempool=300
+
+# ZMQ settings
+zmqpubhashblock=tcp://0.0.0.0:28332
 
 # Additional settings (edit via GUI)
 EOF
 
-        # Add regtest-specific settings
-        if [ "$NETWORK" = "regtest" ]; then
-            echo "fallbackfee=0.00001" >> "$CONF_FILE"
+            # Add regtest-specific settings
+            if [ "$NETWORK" = "regtest" ]; then
+                echo "fallbackfee=0.00001" >> "$CONF_FILE"
+            fi
         fi
     fi
 

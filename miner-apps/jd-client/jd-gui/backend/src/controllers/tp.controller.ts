@@ -23,8 +23,8 @@ export class TpController {
         const detectionPaths = [
           { path: '/bitcoin-ipc-mainnet/node.sock', dataDir: '/bitcoin-ipc-mainnet', network: 'mainnet', source: 'Docker Mainnet' },
           { path: '/host-bitcoin/mainnet/node.sock', dataDir: '/host-bitcoin/mainnet', network: 'mainnet', source: 'Host Mainnet' },
-          { path: '/bitcoin-ipc-testnet/node.sock', dataDir: '/bitcoin-ipc-testnet', network: 'testnet', source: 'Docker Testnet4' },
-          { path: '/host-bitcoin/testnet4/node.sock', dataDir: '/host-bitcoin/testnet4', network: 'testnet', source: 'Host Testnet4' },
+          { path: '/bitcoin-ipc-testnet/node.sock', dataDir: '/bitcoin-ipc-testnet', network: 'testnet4', source: 'Docker Testnet4' },
+          { path: '/host-bitcoin/testnet4/node.sock', dataDir: '/host-bitcoin/testnet4', network: 'testnet4', source: 'Host Testnet4' },
         ];
 
         for (const check of detectionPaths) {
@@ -36,16 +36,14 @@ export class TpController {
           }
         }
 
+        const networkFlag = network === 'mainnet' ? '' : network === 'testnet4' ? 'testnet4=1' : `${network}=1`;
         const defaultConfig = `# Stratum V2 Template Provider Configuration
 # Auto-generated configuration
 # Network: ${network}
 
 # Bitcoin Core data directory (where node.sock IPC socket is located)
 datadir=${bitcoinDataDir}
-
-# Network (main, test, signet, regtest)
-chain=${network === 'mainnet' ? 'main' : network === 'testnet' ? 'test' : network}
-
+${networkFlag ? '\n# Network selection\n' + networkFlag : ''}
 # Connect to Bitcoin Core via IPC (Unix socket)
 ipcconnect=unix
 
@@ -264,16 +262,14 @@ debug=ipc
         }
       }
 
+      const networkFlag = network === 'mainnet' ? '' : network === 'testnet4' ? 'testnet4=1' : `${network}=1`;
       const defaultConfig = `# Stratum V2 Template Provider Configuration
 # Auto-generated default configuration
 # Network: ${network}
 
 # Bitcoin Core data directory (where node.sock IPC socket is located)
 datadir=${bitcoinDataDir}
-
-# Network (main, test, signet, regtest)
-chain=${chain}
-
+${networkFlag ? '\n# Network selection\n' + networkFlag : ''}
 # Connect to Bitcoin Core via IPC (Unix socket)
 ipcconnect=unix
 

@@ -491,7 +491,7 @@ export function ConfigForm() {
                 </div>
 
                 <div className="form-group">
-                  <label>JD Address (optional)</label>
+                  <label>JD Address</label>
                   <input
                     type="text"
                     value={upstream.jd_address || ''}

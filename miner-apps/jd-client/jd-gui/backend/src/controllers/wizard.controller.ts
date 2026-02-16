@@ -207,10 +207,7 @@ export async function generateFullStackConfig(req: Request, res: Response): Prom
 
 # Bitcoin Core data directory (where node.sock IPC socket is located)
 datadir=${finalBitcoinCoreDataDir}
-
-# Network (main, test, signet, regtest)
-chain=${network === 'mainnet' ? 'main' : network === 'testnet4' ? 'test' : network}
-
+${network !== 'mainnet' ? '\n# Network selection\n' + (network === 'testnet4' ? 'testnet4=1' : network + '=1') : ''}
 # Connect to Bitcoin Core via IPC (Unix socket)
 ipcconnect=unix
 

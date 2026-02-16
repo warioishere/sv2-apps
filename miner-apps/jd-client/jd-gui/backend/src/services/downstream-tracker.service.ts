@@ -33,10 +33,10 @@ const CHANNEL_RE =
   /Received:\s*OpenStandardMiningChannel\(.*?user_identity:\s*([^,)]+).*?nominal_hash_rate:\s*([\d.eE+]+).*?downstream_id=(\d+)/;
 
 // Regex for disconnect log lines
-// Example: Downstream Some(3) disconnected
-// Example: downstream_id=3 ... removing downstream
+// Example: Downstream 0 disconnected — Channel manager.
+// Example: Channel Manager: removing downstream after shutdown downstream_id=0
 const DISCONNECT_RE =
-  /(?:Downstream\s+Some\((\d+)\)\s+disconnected|downstream_id=(\d+).*?removing\s+downstream)/;
+  /(?:Downstream\s+(\d+)\s+disconnected|removing\s+downstream.*?downstream_id=(\d+))/;
 
 export class DownstreamTrackerService {
   private connectedMiners = new Map<number, ConnectedMiner>();
@@ -99,6 +99,14 @@ export class DownstreamTrackerService {
 
   getConnectedMiners(): ConnectedMiner[] {
     return Array.from(this.connectedMiners.values());
+  }
+
+  removeMiner(downstreamId: number): void {
+    const miner = this.connectedMiners.get(downstreamId);
+    if (miner) {
+      this.connectedMiners.delete(downstreamId);
+      logger.info(`[DownstreamTracker] Stale miner removed: downstream_id=${downstreamId} vendor=${miner.vendor}`);
+    }
   }
 
   reset(): void {

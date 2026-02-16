@@ -26,6 +26,7 @@ export class JdClientProcessManager extends EventEmitter {
   private startTime: number | null = null;
   private readonly binaryPath: string;
   private readonly configPath: string;
+  private soloMiningMode: boolean = false;
 
   constructor(binaryPath: string = '/app/jd_client_sv2', configPath: string = '/app/config/jdc.toml') {
     super();
@@ -44,6 +45,17 @@ export class JdClientProcessManager extends EventEmitter {
       if (!fs.existsSync(this.configPath)) {
         resolve({ success: false, error: 'Configuration file not found' });
         return;
+      }
+
+      // Detect solo mining mode from config file marker
+      try {
+        const configContent = fs.readFileSync(this.configPath, 'utf-8');
+        this.soloMiningMode = configContent.includes('# SOLO_MINING_MODE');
+        if (this.soloMiningMode) {
+          logger.info('Solo mining mode detected - upstream connection failure logs will be suppressed');
+        }
+      } catch (_) {
+        this.soloMiningMode = false;
       }
 
       logger.info(`Starting jd-client: ${this.binaryPath} -c ${this.configPath}`);
@@ -158,6 +170,12 @@ export class JdClientProcessManager extends EventEmitter {
     const lines = data.split('\n').filter(line => line.trim());
 
     for (const line of lines) {
+      // In solo mining mode, suppress connection failure logs for the dummy upstream
+      if (this.soloMiningMode && this.isSoloModeFilteredLog(line)) {
+        logger.debug(`[JDC-solo-filtered] ${line}`);
+        continue;
+      }
+
       const level = this.parseLogLevel(line) || defaultLevel;
       const logEntry: LogEntry = {
         timestamp: new Date().toISOString(),
@@ -180,6 +198,17 @@ export class JdClientProcessManager extends EventEmitter {
     }
   }
 
+  // Filter out noisy connection failure logs when in solo mining mode
+  private isSoloModeFilteredLog(line: string): boolean {
+    const lower = line.toLowerCase();
+    // Filter connection errors to the dummy upstream (127.0.0.1:1)
+    if (lower.includes('127.0.0.1:1')) return true;
+    // Filter generic upstream connection failure/retry messages
+    if (lower.includes('upstream') && (lower.includes('connection refused') || lower.includes('failed to connect') || lower.includes('reconnect'))) return true;
+    if (lower.includes('pool') && (lower.includes('connection refused') || lower.includes('failed to connect'))) return true;
+    return false;
+  }
+
   private parseLogLevel(line: string): string | null {
     // Parse tracing format: "2024-01-01T12:00:00.000Z INFO ..."
     const tracingMatch = line.match(/\s+(TRACE|DEBUG|INFO|WARN|ERROR)\s+/i);
@@ -198,6 +227,7 @@ export class JdClientProcessManager extends EventEmitter {
   private cleanup() {
     this.process = null;
     this.startTime = null;
+    this.soloMiningMode = false;
     downstreamTracker.reset();
     downstreamReporter.stop();
   }

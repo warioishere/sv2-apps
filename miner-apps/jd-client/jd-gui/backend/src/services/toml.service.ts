@@ -104,7 +104,7 @@ export class TomlService {
     sections.push(']');
     sections.push('');
 
-    // Upstreams (skip if in solo mining mode)
+    // Upstreams
     if (!config.solo_mining_mode) {
       for (let i = 0; i < config.upstreams.length; i++) {
         const upstream = config.upstreams[i];
@@ -128,9 +128,18 @@ export class TomlService {
         sections.push('');
       }
     } else {
-      // Add comment when in solo mining mode
-      sections.push('# Solo Mining Mode: Upstream pool connections disabled');
-      sections.push('# Pool configuration is preserved in database and will be restored when solo mining is disabled');
+      // Solo Mining Mode: Use dummy upstream so JD-Client can start.
+      // It will fail to connect and fall back to solo mining using the Template Provider.
+      // Pool configuration is preserved in database and restored when solo mining is disabled.
+      sections.push('# SOLO_MINING_MODE');
+      sections.push('# Dummy upstream to trigger JD-Client fallback solo mining.');
+      sections.push('# Real pool configuration is preserved in database.');
+      sections.push('[[upstreams]]');
+      sections.push('authority_pubkey = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72"');
+      sections.push('pool_address = "127.0.0.1"');
+      sections.push('pool_port = 1');
+      sections.push('jds_address = "127.0.0.1"');
+      sections.push('jds_port = 2');
       sections.push('');
     }
 

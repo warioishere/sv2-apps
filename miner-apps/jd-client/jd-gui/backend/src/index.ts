@@ -4,7 +4,6 @@ import { createServer } from 'http';
 import path from 'path';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/error.middleware';
-import { apiLimiter } from './middleware/ratelimit.middleware';
 import { setupLogStreaming } from './websocket/log-stream';
 import { setupUpdateStreaming } from './websocket/update-stream';
 import { setupTpLogStreaming } from './websocket/tp-log-stream';
@@ -54,9 +53,6 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Apply rate limiting to API routes
-app.use('/api', apiLimiter);
 
 // Phase 1 API Routes (backward compatible)
 app.use('/api/jdc', jdcRoutes);
