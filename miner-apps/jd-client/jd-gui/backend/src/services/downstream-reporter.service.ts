@@ -37,6 +37,8 @@ export class DownstreamReporterService {
     const activeConfig = configService.getActiveConfiguration();
     if (!activeConfig) return false;
     const config = configService.parseConfig(activeConfig) as ConfigInput & { report_downstream_miners?: boolean };
+    // Don't report when in solo mining mode - there's no pool to report to
+    if (config.solo_mining_mode === true) return false;
     return config.report_downstream_miners === true;
   }
 
