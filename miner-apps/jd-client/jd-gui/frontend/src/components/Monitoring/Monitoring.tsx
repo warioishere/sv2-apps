@@ -222,7 +222,7 @@ export function Monitoring() {
           <div className="dashboard-card-label">Pool Status</div>
           <div className="dashboard-card-value">
             <span className={`pool-status ${dashboard?.poolStatus ?? 'unknown'}`}>
-              {dashboard?.poolStatus ?? 'unknown'}
+              {dashboard?.poolStatus === 'solo' ? 'Solo Mining to own Node' : (dashboard?.poolStatus ?? 'unknown')}
             </span>
           </div>
         </div>

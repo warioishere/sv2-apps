@@ -69,7 +69,7 @@ export interface ApiResponse<T = any> {
 export interface MonitoringDashboard {
   minerCount: number;
   totalHashrate: number;
-  poolStatus: 'connected' | 'disconnected' | 'unknown';
+  poolStatus: 'connected' | 'disconnected' | 'unknown' | 'solo';
   uptimeSecs: number;
   totalChannels: number;
   serverHashrate: number;

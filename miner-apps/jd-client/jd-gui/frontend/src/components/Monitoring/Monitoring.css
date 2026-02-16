@@ -61,6 +61,11 @@
   color: #6b7280;
 }
 
+.pool-status.solo {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 /* Global Hashrate Chart */
 .monitoring-chart {
   background: white;

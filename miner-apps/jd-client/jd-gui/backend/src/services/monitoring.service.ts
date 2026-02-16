@@ -35,7 +35,7 @@ export interface EnrichedMiner {
 export interface MonitoringDashboard {
   minerCount: number;
   totalHashrate: number;
-  poolStatus: 'connected' | 'disconnected' | 'unknown';
+  poolStatus: 'connected' | 'disconnected' | 'unknown' | 'solo';
   uptimeSecs: number;
   totalChannels: number;
   serverHashrate: number;
@@ -332,12 +332,17 @@ class MonitoringService {
     // Use getEnrichedMiners() to get the filtered (non-stale) miner count
     const enrichedMiners = this.getEnrichedMiners();
 
-    // Pool status: connected = monitoring reachable (JDC is running and connected to pool)
-    // disconnected = monitoring unreachable (JDC not running)
-    // unknown = no monitoring address configured
-    let poolStatus: 'connected' | 'disconnected' | 'unknown' = 'unknown';
+    // Pool status
+    let poolStatus: 'connected' | 'disconnected' | 'unknown' | 'solo' = 'unknown';
     const baseUrl = this.getMonitoringBaseUrl();
-    if (baseUrl) {
+
+    // Check if solo mining mode is active
+    const activeConfig = configService.getActiveConfiguration();
+    const isSoloMode = activeConfig ? (configService.parseConfig(activeConfig).solo_mining_mode === true) : false;
+
+    if (isSoloMode) {
+      poolStatus = 'solo';
+    } else if (baseUrl) {
       poolStatus = this.monitoringReachable ? 'connected' : 'disconnected';
     }
 
