@@ -330,9 +330,12 @@ export function ConfigForm() {
                   onChange={(e) => updateConfig({ send_payout_address_to_pool: e.target.checked })}
                   style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                 />
-                <span>Send payout address to pool (Solo Mining Pool Support)</span>
+                <span>Solo Pool Support (send payout address to pool)</span>
               </label>
-              <small>Enable this for solo mining pools to receive rewards directly to your address</small>
+              <small>
+                For solo mining pools that parse your Bitcoin address from user_identity. Requires Stratum V2 pool with full Job Declaration Protocol (JDP) support.
+                Verify with your pool operator before enabling. See SOLO-POOL-SUPPORT.md for details.
+              </small>
             </div>
 
             <div className="form-group">
