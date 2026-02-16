@@ -416,7 +416,7 @@ export function ConfigForm() {
               {!config.solo_mining_mode ? (
                 <div style={{ backgroundColor: '#dbeafe', padding: '12px', borderRadius: '6px', fontSize: '14px', color: '#1e40af' }}>
                   <strong>Pool Mode:</strong> JD-Client connects to upstream pool servers (configured in Upstreams tab).
-                  Use this for normal pooled mining or when connecting to a solo mining pool like DEMAND.
+                  Use this for normal pooled mining or when connecting to a solo mining pool that supports Stratum V2.
                 </div>
               ) : (
                 <div style={{ backgroundColor: '#fef3c7', padding: '12px', borderRadius: '6px', fontSize: '14px', color: '#92400e', border: '1px solid #f59e0b' }}>
