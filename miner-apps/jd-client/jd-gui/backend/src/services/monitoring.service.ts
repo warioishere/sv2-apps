@@ -380,12 +380,13 @@ class MonitoringService {
 
     return trackedMiners
       .filter((miner: ConnectedMiner) => {
-        // If the monitoring API has channel data for this miner, it's active
-        if (this.findChannelDataForMiner(miner.downstreamId)) return true;
-        // If recently connected, give it time to appear in monitoring API
         const connectedAge = now - new Date(miner.connectedAt).getTime();
+        // If recently connected, give it time to appear in monitoring API
         if (connectedAge < STALE_THRESHOLD_MS) return true;
-        // Stale: no monitoring data and connected too long ago - remove from tracker
+        // Check if the monitoring API has active channel data for this miner
+        const channelData = this.findChannelDataForMiner(miner.downstreamId);
+        if (channelData && channelData.currentHashrate > 0) return true;
+        // Stale: no channel data, or channel data with 0 hashrate after threshold
         downstreamTracker.removeMiner(miner.downstreamId);
         return false;
       })
