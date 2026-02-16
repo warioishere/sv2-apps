@@ -18,6 +18,7 @@ export interface ConfigInput {
   monitoring_address?: string;
   send_payout_address_to_pool?: boolean;
   report_downstream_miners?: boolean;
+  solo_mining_mode?: boolean;
 }
 
 export interface UpstreamConfig {

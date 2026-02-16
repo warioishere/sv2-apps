@@ -35,6 +35,7 @@ const defaultConfig: ConfigInput = {
   monitoring_address: '',
   send_payout_address_to_pool: true,
   report_downstream_miners: false,
+  solo_mining_mode: false,
 };
 
 type TabId = 'basic' | 'encryption' | 'mining' | 'upstreams' | 'template' | 'advanced';
@@ -379,11 +380,81 @@ export function ConfigForm() {
               </select>
               <small>Full Template = complete block control, Coinbase Only = only customize coinbase</small>
             </div>
+
+            <div className="form-group" style={{ backgroundColor: '#f0f9ff', padding: '20px', borderRadius: '8px', border: '2px solid #3b82f6' }}>
+              <label style={{ fontSize: '16px', fontWeight: '700', color: '#1e40af', marginBottom: '12px', display: 'block' }}>
+                Connection Mode
+              </label>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '12px 20px', backgroundColor: !config.solo_mining_mode ? '#3b82f6' : '#e5e7eb', color: !config.solo_mining_mode ? 'white' : '#6b7280', borderRadius: '8px', fontWeight: '600', transition: 'all 0.2s', flex: 1, justifyContent: 'center' }}>
+                  <input
+                    type="radio"
+                    name="mining_mode"
+                    checked={!config.solo_mining_mode}
+                    onChange={() => updateConfig({ solo_mining_mode: false })}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span>🏊 Pool Mode</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '12px 20px', backgroundColor: config.solo_mining_mode ? '#f59e0b' : '#e5e7eb', color: config.solo_mining_mode ? 'white' : '#6b7280', borderRadius: '8px', fontWeight: '600', transition: 'all 0.2s', flex: 1, justifyContent: 'center' }}>
+                  <input
+                    type="radio"
+                    name="mining_mode"
+                    checked={config.solo_mining_mode || false}
+                    onChange={() => updateConfig({ solo_mining_mode: true })}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span>⚡ Direct Solo Mining</span>
+                </label>
+              </div>
+
+              {!config.solo_mining_mode ? (
+                <div style={{ backgroundColor: '#dbeafe', padding: '12px', borderRadius: '6px', fontSize: '14px', color: '#1e40af' }}>
+                  <strong>Pool Mode:</strong> JD-Client connects to upstream pool servers (configured in Upstreams tab).
+                  Use this for normal pooled mining or when connecting to a solo mining pool like DEMAND.
+                </div>
+              ) : (
+                <div style={{ backgroundColor: '#fef3c7', padding: '12px', borderRadius: '6px', fontSize: '14px', color: '#92400e', border: '1px solid #f59e0b' }}>
+                  <div style={{ fontWeight: '700', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ⚠️ EXPERIMENTAL: Direct Solo Mining
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>What this does:</strong> Disables all upstream pool connections. JD-Client will obtain block templates from your Template Provider
+                    (Bitcoin Core) and submit valid blocks directly to the Bitcoin network via Bitcoin Core's submitblock RPC.
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>Requirements:</strong>
+                    <ul style={{ marginLeft: '20px', marginTop: '4px' }}>
+                      <li>Valid Template Provider connection (Bitcoin Core or Sv2 TP)</li>
+                      <li>Bitcoin Core must be fully synced</li>
+                      <li>Bitcoin address configured below for block rewards</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <strong>Note:</strong> Your upstream pool configuration is preserved in the database and will be automatically restored when you switch back to Pool Mode.
+                    This feature uses JD-Client's built-in fallback solo mining capability.
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {activeTab === 'upstreams' && (
           <div className="form-section">
+            {config.solo_mining_mode && (
+              <div style={{ backgroundColor: '#fef3c7', padding: '16px', borderRadius: '8px', marginBottom: '20px', border: '2px solid #f59e0b' }}>
+                <div style={{ fontWeight: '700', color: '#92400e', marginBottom: '8px' }}>
+                  ℹ️ Direct Solo Mining Mode Active
+                </div>
+                <div style={{ color: '#78350f', fontSize: '14px' }}>
+                  Upstream pool connections are currently disabled. Your pool configuration is saved and will be used when you switch back to Pool Mode in the Mining tab.
+                  You can still edit these settings, and they will be preserved in the database.
+                </div>
+              </div>
+            )}
             {config.upstreams.map((upstream, index) => (
               <div key={index} className="upstream-group">
                 <h3>Upstream {index + 1}</h3>

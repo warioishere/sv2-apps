@@ -21,8 +21,9 @@ export interface ConfigInput {
   send_payout_address_to_pool?: boolean;
   supported_extensions?: number[];
   required_extensions?: number[];
-  // GUI-only setting (not written to TOML)
+  // GUI-only settings (not written to TOML)
   report_downstream_miners?: boolean;
+  solo_mining_mode?: boolean;
 }
 
 export interface UpstreamConfig {
@@ -103,26 +104,33 @@ export class TomlService {
     sections.push(']');
     sections.push('');
 
-    // Upstreams
-    for (let i = 0; i < config.upstreams.length; i++) {
-      const upstream = config.upstreams[i];
-      sections.push('[[upstreams]]');
-      sections.push(`authority_pubkey = "${upstream.authority_pubkey}"`);
+    // Upstreams (skip if in solo mining mode)
+    if (!config.solo_mining_mode) {
+      for (let i = 0; i < config.upstreams.length; i++) {
+        const upstream = config.upstreams[i];
+        sections.push('[[upstreams]]');
+        sections.push(`authority_pubkey = "${upstream.authority_pubkey}"`);
 
-      // Split pool_address into address and port
-      const [poolHost, poolPort] = upstream.pool_address.split(':');
-      sections.push(`pool_address = "${poolHost}"`);
-      sections.push(`pool_port = ${poolPort}`);
+        // Split pool_address into address and port
+        const [poolHost, poolPort] = upstream.pool_address.split(':');
+        sections.push(`pool_address = "${poolHost}"`);
+        sections.push(`pool_port = ${poolPort}`);
 
-      // Split jd_address into address and port if provided
-      if (upstream.jd_address) {
-        const [jdHost, jdPort] = upstream.jd_address.split(':');
-        sections.push(`jds_address = "${jdHost}"`);
-        sections.push(`jds_port = ${jdPort}`);
+        // Split jd_address into address and port if provided
+        if (upstream.jd_address) {
+          const [jdHost, jdPort] = upstream.jd_address.split(':');
+          sections.push(`jds_address = "${jdHost}"`);
+          sections.push(`jds_port = ${jdPort}`);
+        }
+        if (upstream.propagate_upstream_target !== undefined) {
+          sections.push(`propagate_upstream_target = ${upstream.propagate_upstream_target}`);
+        }
+        sections.push('');
       }
-      if (upstream.propagate_upstream_target !== undefined) {
-        sections.push(`propagate_upstream_target = ${upstream.propagate_upstream_target}`);
-      }
+    } else {
+      // Add comment when in solo mining mode
+      sections.push('# Solo Mining Mode: Upstream pool connections disabled');
+      sections.push('# Pool configuration is preserved in database and will be restored when solo mining is disabled');
       sections.push('');
     }
 
@@ -201,21 +209,28 @@ export class TomlService {
       }
     }
 
-    // Validate upstreams
-    if (!config.upstreams || config.upstreams.length === 0) {
-      errors.push('At least one upstream is required');
+    // Validate upstreams (skip validation in solo mining mode)
+    if (!config.solo_mining_mode) {
+      if (!config.upstreams || config.upstreams.length === 0) {
+        errors.push('At least one upstream is required (or enable Solo Mining Mode)');
+      } else {
+        config.upstreams.forEach((upstream, idx) => {
+          if (!this.isValidSocketAddress(upstream.pool_address)) {
+            errors.push(`Upstream ${idx + 1}: Invalid pool_address format`);
+          }
+          if (!upstream.authority_pubkey || upstream.authority_pubkey.length < 20) {
+            errors.push(`Upstream ${idx + 1}: Invalid authority_pubkey`);
+          }
+          if (upstream.jd_address && !this.isValidSocketAddress(upstream.jd_address)) {
+            errors.push(`Upstream ${idx + 1}: Invalid jd_address format`);
+          }
+        });
+      }
     } else {
-      config.upstreams.forEach((upstream, idx) => {
-        if (!this.isValidSocketAddress(upstream.pool_address)) {
-          errors.push(`Upstream ${idx + 1}: Invalid pool_address format`);
-        }
-        if (!upstream.authority_pubkey || upstream.authority_pubkey.length < 20) {
-          errors.push(`Upstream ${idx + 1}: Invalid authority_pubkey`);
-        }
-        if (upstream.jd_address && !this.isValidSocketAddress(upstream.jd_address)) {
-          errors.push(`Upstream ${idx + 1}: Invalid jd_address format`);
-        }
-      });
+      // In solo mining mode, validate that we have a Bitcoin address
+      if (!config.coinbase_reward_script || !config.coinbase_reward_script.includes('addr(')) {
+        errors.push('Solo Mining Mode requires a valid Bitcoin address in coinbase_reward_script');
+      }
     }
 
     // Validate template provider
