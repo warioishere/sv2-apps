@@ -201,8 +201,8 @@ class ApiService {
     return response.data;
   }
 
-  async getMinerHashrateHistory(userIdentity: string): Promise<{ history: HashrateDataPoint[] }> {
-    const response = await axios.get(`${API_BASE}/monitoring/hashrate/${encodeURIComponent(userIdentity)}`);
+  async getMinerHashrateHistory(downstreamId: number): Promise<{ history: HashrateDataPoint[] }> {
+    const response = await axios.get(`${API_BASE}/monitoring/hashrate/${downstreamId}`);
     return response.data;
   }
 }

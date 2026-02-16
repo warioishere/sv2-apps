@@ -108,7 +108,7 @@ function MinerCard({ miner }: MinerCardProps) {
 
     const fetchHistory = async () => {
       try {
-        const data = await apiService.getMinerHashrateHistory(miner.userIdentity);
+        const data = await apiService.getMinerHashrateHistory(miner.downstreamId);
         if (!cancelled) setMinerHistory(data.history);
       } catch {
         // ignore

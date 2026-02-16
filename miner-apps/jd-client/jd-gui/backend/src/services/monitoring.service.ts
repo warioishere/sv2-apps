@@ -181,7 +181,7 @@ class MonitoringService {
   private minerHistories = new Map<string, RingBuffer>();
   private minerShareWorkHistories = new Map<string, ShareWorkRingBuffer>();
   private lastGlobalData: JdcGlobalResponse | null = null;
-  private lastChannelData = new Map<string, MinerChannelData>(); // keyed by user_identity
+  private lastChannelData = new Map<string, MinerChannelData>(); // keyed by "clientId:channelId"
   private monitoringReachable = false;
 
   start(): void {
@@ -255,7 +255,8 @@ class MonitoringService {
               { timeout: 5000 },
             );
             for (const ch of channelsRes.data?.standard_channels ?? []) {
-              newChannelData.set(ch.user_identity, {
+              const key = `${client.client_id}:${ch.channel_id}`;
+              newChannelData.set(key, {
                 clientId: client.client_id,
                 channelId: ch.channel_id,
                 userIdentity: ch.user_identity,
@@ -280,25 +281,25 @@ class MonitoringService {
 
       // Record per-miner share_work_sum and calculate hashrate
       let totalCalculatedHashrate = 0;
-      for (const [identity, data] of this.lastChannelData) {
-        // Track share_work_sum for hashrate calculation
-        if (!this.minerShareWorkHistories.has(identity)) {
-          this.minerShareWorkHistories.set(identity, new ShareWorkRingBuffer());
+      for (const [key, data] of this.lastChannelData) {
+        // Track share_work_sum for hashrate calculation (keyed by clientId:channelId)
+        if (!this.minerShareWorkHistories.has(key)) {
+          this.minerShareWorkHistories.set(key, new ShareWorkRingBuffer());
         }
-        this.minerShareWorkHistories.get(identity)!.push({
+        this.minerShareWorkHistories.get(key)!.push({
           timestamp: nowMs,
           shareWorkSum: data.shareWorkSum,
         });
 
         // Calculate actual hashrate from share_work_sum deltas
-        const calculatedHashrate = this.minerShareWorkHistories.get(identity)!.calculateHashrate(HASHRATE_WINDOW_MS);
+        const calculatedHashrate = this.minerShareWorkHistories.get(key)!.calculateHashrate(HASHRATE_WINDOW_MS);
         totalCalculatedHashrate += calculatedHashrate;
 
         // Store calculated hashrate in display history
-        if (!this.minerHistories.has(identity)) {
-          this.minerHistories.set(identity, new RingBuffer());
+        if (!this.minerHistories.has(key)) {
+          this.minerHistories.set(key, new RingBuffer());
         }
-        this.minerHistories.get(identity)!.push({
+        this.minerHistories.get(key)!.push({
           timestamp: now,
           hashrate: calculatedHashrate,
         });
@@ -359,6 +360,14 @@ class MonitoringService {
     };
   }
 
+  // Find channel data for a downstream miner by matching clientId to downstreamId
+  private findChannelDataForMiner(downstreamId: number): MinerChannelData | undefined {
+    for (const data of this.lastChannelData.values()) {
+      if (data.clientId === downstreamId) return data;
+    }
+    return undefined;
+  }
+
   getEnrichedMiners(): EnrichedMiner[] {
     const trackedMiners = downstreamTracker.getConnectedMiners();
     const now = Date.now();
@@ -367,7 +376,7 @@ class MonitoringService {
     return trackedMiners
       .filter((miner: ConnectedMiner) => {
         // If the monitoring API has channel data for this miner, it's active
-        if (this.lastChannelData.has(miner.userIdentity)) return true;
+        if (this.findChannelDataForMiner(miner.downstreamId)) return true;
         // If recently connected, give it time to appear in monitoring API
         const connectedAge = now - new Date(miner.connectedAt).getTime();
         if (connectedAge < STALE_THRESHOLD_MS) return true;
@@ -376,7 +385,7 @@ class MonitoringService {
         return false;
       })
       .map((miner: ConnectedMiner) => {
-        const channelData = this.lastChannelData.get(miner.userIdentity);
+        const channelData = this.findChannelDataForMiner(miner.downstreamId);
 
         return {
           downstreamId: miner.downstreamId,
@@ -402,9 +411,20 @@ class MonitoringService {
     return this.globalHistory.getAll();
   }
 
-  getMinerHashrateHistory(userIdentity: string): HashrateDataPoint[] {
-    const history = this.minerHistories.get(userIdentity);
-    return history ? history.getAll() : [];
+  getMinerHashrateHistory(downstreamId: number): HashrateDataPoint[] {
+    // Find the channel data key matching this downstream/client ID
+    const key = `${downstreamId}:2`; // Standard channel ID is typically 2
+    const history = this.minerHistories.get(key);
+    if (history) return history.getAll();
+
+    // Fallback: search all channel data for matching clientId
+    for (const [k, data] of this.lastChannelData) {
+      if (data.clientId === downstreamId) {
+        const h = this.minerHistories.get(k);
+        if (h) return h.getAll();
+      }
+    }
+    return [];
   }
 }
 

@@ -34,8 +34,11 @@ export class MonitoringController {
 
   async getMinerHashrate(req: Request, res: Response) {
     try {
-      const { userIdentity } = req.params;
-      const history = monitoringService.getMinerHashrateHistory(userIdentity);
+      const downstreamId = parseInt(req.params.downstreamId, 10);
+      if (isNaN(downstreamId)) {
+        return res.status(400).json({ error: 'Invalid downstreamId' });
+      }
+      const history = monitoringService.getMinerHashrateHistory(downstreamId);
       res.json({ history });
     } catch (error) {
       const err = error as Error;
