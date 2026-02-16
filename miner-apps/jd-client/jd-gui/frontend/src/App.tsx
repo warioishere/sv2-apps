@@ -5,9 +5,10 @@ import { SetupWizard } from './components/SetupWizard/SetupWizard';
 import { UpdateManager } from './components/UpdateManager/UpdateManager';
 import { TpConfig } from './components/TpConfig/TpConfig';
 import { BitcoinCore } from './components/BitcoinCore/BitcoinCore';
+import { Monitoring } from './components/Monitoring/Monitoring';
 import './App.css';
 
-type View = 'wizard' | 'status' | 'config' | 'bitcoin-core' | 'template-provider' | 'updates';
+type View = 'wizard' | 'status' | 'monitoring' | 'config' | 'bitcoin-core' | 'template-provider' | 'updates';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('status');
@@ -41,7 +42,7 @@ function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '') as View;
-      if (hash && ['wizard', 'status', 'config', 'bitcoin-core', 'template-provider', 'updates'].includes(hash)) {
+      if (hash && ['wizard', 'status', 'monitoring', 'config', 'bitcoin-core', 'template-provider', 'updates'].includes(hash)) {
         setCurrentView(hash);
       }
     };
@@ -93,6 +94,12 @@ function App() {
           Template Provider
         </button>
         <button
+          className={currentView === 'monitoring' ? 'active' : ''}
+          onClick={() => setCurrentView('monitoring')}
+        >
+          Monitoring
+        </button>
+        <button
           className={currentView === 'updates' ? 'active' : ''}
           onClick={() => setCurrentView('updates')}
         >
@@ -110,6 +117,7 @@ function App() {
           <>
             {currentView === 'wizard' && <SetupWizard />}
             {currentView === 'status' && <StatusPanel />}
+            {currentView === 'monitoring' && <Monitoring />}
             {currentView === 'config' && <ConfigForm />}
             {currentView === 'bitcoin-core' && <BitcoinCore />}
             {currentView === 'template-provider' && <TpConfig />}

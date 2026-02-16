@@ -1,0 +1,267 @@
+.monitoring {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Dashboard Cards */
+.monitoring-dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.dashboard-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-card-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.dashboard-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.dashboard-card-value.small {
+  font-size: 20px;
+}
+
+/* Pool status badges */
+.pool-status {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pool-status.connected {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.pool-status.disconnected {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.pool-status.unknown {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* Global Hashrate Chart */
+.monitoring-chart {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.monitoring-chart h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+/* Miner Cards */
+.monitoring-miners {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.monitoring-miners h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.miners-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.miner-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.miner-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+.miner-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.miner-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  cursor: pointer;
+  user-select: none;
+  background: #fafafa;
+}
+
+.miner-card-header:hover {
+  background: #f3f4f6;
+}
+
+.miner-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.miner-card-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: #1f2937;
+}
+
+.miner-card-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.miner-card-stats {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.miner-stat {
+  text-align: right;
+}
+
+.miner-stat-value {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.miner-stat-label {
+  font-size: 11px;
+  color: #9ca3af;
+  text-transform: uppercase;
+}
+
+.miner-card-expand {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-left: 12px;
+  transition: transform 0.2s;
+}
+
+.miner-card-expand.open {
+  transform: rotate(180deg);
+}
+
+.miner-card-details {
+  padding: 16px;
+  border-top: 1px solid #e5e7eb;
+  background: white;
+}
+
+.miner-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.miner-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.miner-detail-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+}
+
+.miner-detail-value {
+  font-size: 14px;
+  color: #374151;
+  font-family: 'Courier New', monospace;
+}
+
+.miner-chart-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: #374151;
+}
+
+/* Loading / Error states */
+.monitoring-loading,
+.monitoring-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  text-align: center;
+}
+
+.monitoring-loading p {
+  color: #6b7280;
+  font-size: 16px;
+}
+
+.monitoring-error p {
+  color: #dc2626;
+  font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .monitoring-dashboard {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .miner-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .miner-card-stats {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .miner-detail-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

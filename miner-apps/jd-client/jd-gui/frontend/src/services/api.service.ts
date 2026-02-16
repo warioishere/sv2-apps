@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { ConfigInput, ProcessStatus, ValidationResult, LogEntry } from '../types/config.types';
+import { ConfigInput, ProcessStatus, ValidationResult, LogEntry, MonitoringDashboard, EnrichedMiner, HashrateDataPoint } from '../types/config.types';
 
 const API_BASE = '/api';
 
@@ -183,6 +183,26 @@ class ApiService {
     error?: string;
   }> {
     const response = await axios.post(`${API_BASE}/bitcoin/config`, { network, config });
+    return response.data;
+  }
+  // Monitoring endpoints
+  async getMonitoringDashboard(): Promise<MonitoringDashboard> {
+    const response = await axios.get(`${API_BASE}/monitoring/dashboard`);
+    return response.data;
+  }
+
+  async getMonitoringMiners(): Promise<{ miners: EnrichedMiner[]; count: number }> {
+    const response = await axios.get(`${API_BASE}/monitoring/miners`);
+    return response.data;
+  }
+
+  async getGlobalHashrateHistory(): Promise<{ history: HashrateDataPoint[] }> {
+    const response = await axios.get(`${API_BASE}/monitoring/hashrate/global`);
+    return response.data;
+  }
+
+  async getMinerHashrateHistory(userIdentity: string): Promise<{ history: HashrateDataPoint[] }> {
+    const response = await axios.get(`${API_BASE}/monitoring/hashrate/${encodeURIComponent(userIdentity)}`);
     return response.data;
   }
 }

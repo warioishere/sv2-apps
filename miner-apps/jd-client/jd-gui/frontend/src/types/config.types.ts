@@ -64,3 +64,35 @@ export interface ApiResponse<T = any> {
   error?: string;
   message?: string;
 }
+
+export interface MonitoringDashboard {
+  minerCount: number;
+  totalHashrate: number;
+  poolStatus: 'connected' | 'disconnected' | 'unknown';
+  uptimeSecs: number;
+  totalChannels: number;
+  serverHashrate: number;
+}
+
+export interface EnrichedMiner {
+  downstreamId: number;
+  vendor: string;
+  hardwareVersion: string;
+  firmware: string;
+  deviceId: string;
+  userIdentity: string;
+  nominalHashRate: number;
+  connectedAt: string;
+  clientId?: number;
+  channelId?: number;
+  sharesAccepted: number;
+  bestDiff: number;
+  currentHashrate: number;
+  shareWorkSum: number;
+  expectedSharesPerMinute: number;
+}
+
+export interface HashrateDataPoint {
+  timestamp: string;
+  hashrate: number;
+}

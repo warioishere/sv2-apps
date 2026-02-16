@@ -32,6 +32,8 @@ import wizardRoutes from './routes/wizard.routes';
 import tpRoutes from './routes/tp.routes';
 import bitcoinRoutes from './routes/bitcoin.routes';
 import downstreamRoutes from './routes/downstream.routes';
+import monitoringRoutes from './routes/monitoring.routes';
+import { monitoringService } from './services/monitoring.service';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -72,6 +74,7 @@ app.use('/api/wizard', wizardRoutes);
 app.use('/api/tp', tpRoutes);
 app.use('/api/bitcoin', bitcoinRoutes);
 app.use('/api/downstream', downstreamRoutes);
+app.use('/api/monitoring', monitoringRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -117,6 +120,10 @@ server.listen(PORT, () => {
   healthService.startPeriodicChecks();
   logger.info('Health check service started');
 
+  // Start monitoring service (polls JDC monitoring API every 10s)
+  monitoringService.start();
+  logger.info('Monitoring service started');
+
   // Schedule periodic cleanup (daily at 3 AM)
   const scheduleCleanup = () => {
     const now = new Date();
@@ -142,6 +149,9 @@ const shutdown = async (signal: string) => {
 
   // Stop health check service
   healthService.stopPeriodicChecks();
+
+  // Stop monitoring service
+  monitoringService.stop();
 
   // Stop all instances
   logger.info('Stopping all instances');
