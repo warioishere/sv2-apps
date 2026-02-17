@@ -57,10 +57,6 @@ pub struct JobDeclaratorClientConfig {
     monitoring_address: Option<SocketAddr>,
     #[serde(default = "default_monitoring_cache_refresh_secs")]
     monitoring_cache_refresh_secs: u64,
-    /// Solo mining pool support: When enabled, sends the payout address to the pool
-    /// in the user_identifier field for direct reward distribution
-    #[serde(default)]
-    pub send_payout_address_to_pool: bool,
 }
 
 fn default_monitoring_cache_refresh_secs() -> u64 {
@@ -106,7 +102,6 @@ impl JobDeclaratorClientConfig {
             required_extensions,
             monitoring_address: None,
             monitoring_cache_refresh_secs: 15,
-            send_payout_address_to_pool: false,
         }
     }
 

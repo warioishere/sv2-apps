@@ -33,7 +33,6 @@ const defaultConfig: ConfigInput = {
     data_dir: '',
   },
   monitoring_address: '',
-  send_payout_address_to_pool: true,
   report_downstream_miners: false,
   solo_mining_mode: false,
 };
@@ -320,22 +319,6 @@ export function ConfigForm() {
                 placeholder="addr(...) - Generated automatically"
               />
               <small>This will be used in the TOML config (addr format)</small>
-            </div>
-
-            <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input
-                  type="checkbox"
-                  checked={config.send_payout_address_to_pool || false}
-                  onChange={(e) => updateConfig({ send_payout_address_to_pool: e.target.checked })}
-                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                />
-                <span>Solo Pool Support (send payout address to pool)</span>
-              </label>
-              <small>
-                For solo mining pools that parse your Bitcoin address from user_identity. Requires Stratum V2 pool with full Job Declaration Protocol (JDP) support.
-                Verify with your pool operator before enabling. See SOLO-POOL-SUPPORT.md for details.
-              </small>
             </div>
 
             <div className="form-group">

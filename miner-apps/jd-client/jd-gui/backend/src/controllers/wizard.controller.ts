@@ -177,7 +177,6 @@ export async function generateFullStackConfig(req: Request, res: Response): Prom
       authorityPubkey,
       userIdentity,
       coinbaseAddress,
-      sendPayoutAddressToPool,
       propagateUpstreamTarget,
       bitcoinCoreDataDir,
     } = req.body;
@@ -255,7 +254,6 @@ debug=ipc
       mode: 'FULLTEMPLATE',
       jdc_signature: 'JD-Client with Full Transaction Control',
       coinbase_reward_script: coinbaseScript,
-      send_payout_address_to_pool: sendPayoutAddressToPool,
       upstreams: [
         {
           authority_pubkey: authorityPubkey || '', // Pool's authority key

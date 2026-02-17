@@ -12,7 +12,6 @@ interface WizardState {
   authorityPubkey: string;
   userIdentity: string;
   coinbaseAddress: string;
-  sendPayoutAddressToPool: boolean;
   propagateUpstreamTarget: boolean;
 }
 
@@ -50,7 +49,6 @@ export function SetupWizard() {
     authorityPubkey: '',
     userIdentity: 'jdc_user',
     coinbaseAddress: '',
-    sendPayoutAddressToPool: true,
     propagateUpstreamTarget: false,
   });
 
@@ -284,7 +282,6 @@ export function SetupWizard() {
           authorityPubkey: state.authorityPubkey,
           userIdentity: state.userIdentity,
           coinbaseAddress: state.coinbaseAddress,
-          sendPayoutAddressToPool: state.sendPayoutAddressToPool,
           propagateUpstreamTarget: state.propagateUpstreamTarget,
           bitcoinCoreDataDir,
         }),
@@ -742,23 +739,6 @@ export function SetupWizard() {
                 <small style={{ color: '#666', fontSize: '0.85rem' }}>
                   Where you want to receive block rewards (if you mine a block)
                 </small>
-
-                <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f8f9fa', borderRadius: '6px', border: '1px solid #dee2e6' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={state.sendPayoutAddressToPool}
-                      onChange={(e) => setState(prev => ({ ...prev, sendPayoutAddressToPool: e.target.checked }))}
-                      style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontWeight: '500' }}>
-                      Send payout address to pool (Solo Mining Pool Support)
-                    </span>
-                  </label>
-                  <small style={{ color: '#666', fontSize: '0.85rem', marginLeft: '1.75rem', display: 'block', marginTop: '0.25rem' }}>
-                    Enable this for solo mining pools to receive rewards directly to your address
-                  </small>
-                </div>
               </div>
             </div>
 

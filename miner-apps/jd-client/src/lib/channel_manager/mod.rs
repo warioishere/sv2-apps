@@ -14,7 +14,7 @@ use stratum_apps::{
     key_utils::{Secp256k1PublicKey, Secp256k1SecretKey},
     network_helpers::noise_stream::NoiseTcpStream,
     stratum_core::{
-        bitcoin::{Address, Amount, Network, Target, TxOut},
+        bitcoin::{Amount, Target, TxOut},
         channels_sv2::{
             client::extended::ExtendedChannel,
             outputs::deserialize_outputs,
@@ -255,10 +255,6 @@ pub struct ChannelManager {
     /// 3. Connected: An upstream channel is successfully established.
     /// 4. SoloMining: No upstream is available; the JDC operates in solo mining mode. case.
     pub upstream_state: AtomicUpstreamState,
-    /// Solo mining pool support: when true, includes payout address in user_identifier
-    send_payout_address_to_pool: bool,
-    /// The coinbase reward script used to extract the payout address
-    coinbase_reward_script: stratum_apps::config_helpers::CoinbaseRewardScript,
     /// When enabled, propagates upstream SetTarget to downstream miners and caps vardiff targets.
     /// Updated on upstream connect/failover based on the active upstream's config.
     propagate_upstream_target: Arc<AtomicBool>,
@@ -343,8 +339,6 @@ impl ChannelManager {
             miner_tag_string: config.jdc_signature().to_string(),
             user_identity: config.user_identity().to_string(),
             upstream_state: AtomicUpstreamState::new(UpstreamState::SoloMining),
-            send_payout_address_to_pool: config.send_payout_address_to_pool,
-            coinbase_reward_script: config.coinbase_reward_script.clone(),
             propagate_upstream_target: Arc::new(AtomicBool::new(false)),
         };
 
@@ -971,27 +965,6 @@ impl ChannelManager {
         Ok(())
     }
 
-    /// Extracts Bitcoin address from coinbase_reward_script for solo pool payouts.
-    /// Returns None if feature is disabled or address extraction fails.
-    fn extract_payout_address(&self) -> Option<String> {
-        if !self.send_payout_address_to_pool {
-            return None;
-        }
-
-        let script = self.coinbase_reward_script.script_pubkey();
-
-        // Try to convert script to address for each network type
-        // We try all networks since we don't have network config
-        for network in [Network::Bitcoin, Network::Testnet, Network::Regtest, Network::Signet] {
-            if let Ok(addr) = Address::from_script(&script, network) {
-                return Some(addr.to_string());
-            }
-        }
-
-        error!("Failed to extract Bitcoin address from coinbase_reward_script");
-        None
-    }
-
     /// Sets whether upstream target propagation is enabled.
     /// Called when connecting to an upstream or during failover.
     pub fn set_propagate_upstream_target(&self, enabled: bool) {
@@ -1023,26 +996,12 @@ impl ChannelManager {
                 token_to_allocate
             );
 
-            // Build user_identifier with optional payout address for solo mining pools
-            let user_identifier = if let Some(payout_addr) = self.extract_payout_address() {
-                format!("{}::{}", self.user_identity, payout_addr)
-                    .try_into()
-                    .unwrap_or_else(|_| {
-                        warn!("Failed to encode user_identifier with address, using plain identity");
-                        self.user_identity
-                            .to_string()
-                            .try_into()
-                            .expect("Static string should always convert")
-                    })
-            } else {
-                self.user_identity
+            let message = JobDeclaration::AllocateMiningJobToken(AllocateMiningJobToken {
+                user_identifier: self
+                    .user_identity
                     .to_string()
                     .try_into()
-                    .expect("Static string should always convert")
-            };
-
-            let message = JobDeclaration::AllocateMiningJobToken(AllocateMiningJobToken {
-                user_identifier,
+                    .expect("Static string should always convert"),
                 request_id,
             });
 

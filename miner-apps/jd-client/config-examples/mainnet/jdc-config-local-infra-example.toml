@@ -37,13 +37,6 @@ jdc_signature = "Sv2MinerSignature"
 # will be. If you have an address, embed it in a descriptor like `addr(<address here>)`.
 coinbase_reward_script = "addr(bc1q9f9vj7spn8h7qda6pn8d4g4j99f0mn9lhwz55j)"
 
-# Solo Mining Pool Support (optional)
-# When enabled, sends the payout address (extracted from coinbase_reward_script) to the pool
-# in the user_identifier field. This allows solo mining pools to pay rewards directly to the
-# miner's address instead of through pool redistribution.
-# Default: false (standard pool mining behavior)
-# send_payout_address_to_pool = false
-
 # Enable this option to set a predefined log file path.
 # When enabled, logs will always be written to this file.
 # The CLI option --log-file (or -f) will override this setting if provided.
