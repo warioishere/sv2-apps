@@ -19,6 +19,11 @@ user_identity = "your_username_here"
 # Aggregate channels: if true, all miners share one upstream channel; if false, each miner gets its own channel
 aggregate_channels = true
 
+# Attach worker identity TLV to share submissions for per-worker hashrate tracking
+# (extension 0x0002). Disable when using Bitcoin addresses as user_identity, since
+# addresses exceed the 32-byte TLV limit.
+enable_worker_identity_tlv = true
+
 # Enable this option to set a predefined log file path.
 # When enabled, logs will always be written to this file.
 # The CLI option --log-file (or -f) will override this setting if provided.

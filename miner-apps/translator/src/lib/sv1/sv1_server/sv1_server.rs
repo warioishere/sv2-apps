@@ -452,8 +452,10 @@ impl Sv1Server {
         )
         .map_err(|_| TproxyError::shutdown(TproxyErrorKind::SV1Error))?;
 
-        // Only add TLV fields with user identity in non-aggregated mode
-        let tlv_fields = if is_non_aggregated() {
+        // Only add TLV fields with user identity in non-aggregated mode when enabled.
+        // When disabled (or when user_identity exceeds the 32-byte TLV limit, e.g. Bitcoin
+        // addresses), the TLV is omitted and shares are sent without per-worker identity.
+        let tlv_fields = if self.config.enable_worker_identity_tlv && is_non_aggregated() {
             let user_identity_string = self
                 .downstreams
                 .get(&message.downstream_id)
@@ -461,9 +463,8 @@ impl Sv1Server {
                 .downstream_data
                 .super_safe_lock(|d| d.user_identity.clone());
             UserIdentity::new(&user_identity_string)
-                .unwrap()
-                .to_tlv()
                 .ok()
+                .and_then(|ui| ui.to_tlv().ok())
                 .map(|tlv| vec![tlv])
         } else {
             None
@@ -1246,6 +1247,7 @@ mod tests {
             true,   // aggregate_channels
             vec![], // supported_extensions
             vec![], // required_extensions
+            true,   // enable_worker_identity_tlv
         )
     }
 

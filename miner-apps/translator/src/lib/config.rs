@@ -49,6 +49,12 @@ pub struct TranslatorConfig {
     /// If the upstream server doesn't support these, the translator will fail over to another
     /// upstream.
     pub required_extensions: Vec<u16>,
+    /// Whether to attach a UserIdentity TLV to SubmitSharesExtended messages for per-worker
+    /// hashrate tracking (extension 0x0002). When enabled, the user_identity must fit within
+    /// the 32-byte TLV limit. Disable this when using Bitcoin addresses as user_identity,
+    /// since addresses exceed 32 bytes.
+    #[serde(default = "default_enable_worker_identity_tlv")]
+    pub enable_worker_identity_tlv: bool,
     /// The path to the log file for the Translator.
     #[serde(default, deserialize_with = "opt_path_from_toml")]
     log_file: Option<PathBuf>,
@@ -61,6 +67,10 @@ pub struct TranslatorConfig {
 
 fn default_monitoring_cache_refresh_secs() -> u64 {
     15
+}
+
+fn default_enable_worker_identity_tlv() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -100,6 +110,7 @@ impl TranslatorConfig {
         aggregate_channels: bool,
         supported_extensions: Vec<u16>,
         required_extensions: Vec<u16>,
+        enable_worker_identity_tlv: bool,
     ) -> Self {
         Self {
             upstreams,
@@ -113,6 +124,7 @@ impl TranslatorConfig {
             aggregate_channels,
             supported_extensions,
             required_extensions,
+            enable_worker_identity_tlv,
             log_file: None,
             monitoring_address: None,
             monitoring_cache_refresh_secs: 15,
@@ -222,6 +234,7 @@ mod tests {
             true,
             vec![],
             vec![],
+            true,
         );
 
         assert_eq!(config.upstreams.len(), 1);
@@ -254,6 +267,7 @@ mod tests {
             false,
             vec![],
             vec![],
+            true,
         );
 
         assert!(config.log_dir().is_none());
@@ -288,6 +302,7 @@ mod tests {
             true,
             vec![],
             vec![],
+            true,
         );
 
         assert_eq!(config.upstreams.len(), 2);
@@ -315,6 +330,7 @@ mod tests {
             false,
             vec![],
             vec![],
+            true,
         );
 
         assert!(!config.downstream_difficulty_config.enable_vardiff);
