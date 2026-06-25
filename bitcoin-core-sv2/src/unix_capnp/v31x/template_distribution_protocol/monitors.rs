@@ -176,18 +176,21 @@ impl BitcoinCoreSv2TDP {
                                     // process the stale template data after 10s
                                     self_clone.process_stale_template_data(stale_template_ids).await;
                                 } else {
-                                    // check if the minimum interval has been reached
+                                    // Within min_interval since the last publish: SKIP this fee-update
+                                    // and loop straight back to waitNext, so a chain-tip change arriving
+                                    // during the window is detected immediately. Upstream SLEEPS here,
+                                    // which also blocks the next waitNext and therefore delays chain-tip
+                                    // DETECTION by up to min_interval — see sv2-apps#541. The throttle is
+                                    // meant for fee-updates only; dropping the in-window fee-update is the
+                                    // intended behaviour (a fresh one follows on the next change).
                                     if let Some(last_sent_template_instant) = self_clone.last_sent_template_instant {
-                                        let elapsed = last_sent_template_instant.elapsed().as_millis();
-                                        let min_interval_millis = self_clone.min_interval as u128 * 1_000;
-
-                                        // if the minimum interval has not been reached, sleep for the remaining time
-                                        if elapsed < min_interval_millis {
-                                            let sleep_duration = min_interval_millis - elapsed;
-                                            // Safe cast: min_interval is u8 (max 255), so sleep_duration is at most 255,000 ms,
-                                            // which fits comfortably in u64 (max: 18,446,744,073,709,551,615)
-                                            debug!("Sleeping for {} milliseconds to reach the minimum interval", sleep_duration);
-                                            tokio::time::sleep(std::time::Duration::from_millis(sleep_duration as u64)).await;
+                                        if last_sent_template_instant.elapsed().as_millis()
+                                            < (self_clone.min_interval as u128 * 1_000)
+                                        {
+                                            debug!(
+                                                "Within min_interval; skipping fee-update, back to waitNext (sv2-apps#541)"
+                                            );
+                                            continue;
                                         }
                                     }
 
