@@ -6,14 +6,16 @@ use stratum_apps::{
     stratum_core::{
         binary_sv2::Seq064KOwned,
         extensions_sv2::{
+            EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS, MESSAGE_TYPE_SET_PAYOUT_DISTRIBUTION,
             RequestExtensionsErrorOwned, RequestExtensionsOwned, RequestExtensionsSuccessOwned,
+            SetPayoutDistributionOwned,
         },
         handlers_sv2::HandleExtensionsFromServerOwnedAsync,
         parsers_sv2::{AnyMessageOwned, Tlv},
     },
     utils::types::OutboundFrame,
 };
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[cfg_attr(not(test), hotpath::measure_all)]
 impl HandleExtensionsFromServerOwnedAsync for ChannelManager {
@@ -154,5 +156,20 @@ impl HandleExtensionsFromServerOwnedAsync for ChannelManager {
         }
 
         Ok(())
+    }
+
+    // `SetPayoutDistribution` is sent by a Job Declarator Server, never by the pool this handler
+    // serves.
+    async fn handle_set_payout_distribution(
+        &mut self,
+        _server_id: Option<usize>,
+        msg: SetPayoutDistributionOwned,
+        _tlv_fields: Option<&[Tlv]>,
+    ) -> Result<(), Self::Error> {
+        warn!("Received: {}", msg);
+        Err(JDCError::log(JDCErrorKind::UnexpectedMessage(
+            EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS,
+            MESSAGE_TYPE_SET_PAYOUT_DISTRIBUTION,
+        )))
     }
 }
