@@ -45,7 +45,7 @@ use crate::{
         ChannelManager, ChannelManagerIo, SOLO_FULL_EXTRANONCE_SIZE, SharesOrderedByDiff,
     },
     error::{self, JDCError, JDCErrorKind},
-    utils::{add_share_to_cache, create_close_channel_msg},
+    utils::{add_share_to_cache, create_close_channel_msg, frame_with_tlvs},
 };
 
 fn extranonce_allocation_error_code(
@@ -79,6 +79,8 @@ fn extranonce_allocation_error_code(
 pub enum RouteMessageTo {
     /// Route to the upstream (mining) channel.
     Upstream(MiningOwned),
+    /// Route to the upstream (mining) channel with TLV fields appended.
+    UpstreamWithTlvs(MiningOwned, Vec<Tlv>),
     /// Route to the job declarator subsystem.
     JobDeclarator(JobDeclarationOwned),
     /// Route to the template provider subsystem.
@@ -145,8 +147,12 @@ impl RouteMessageTo {
                 let sv2_frame = OutboundFrame::from_message(AnyMessageOwned::Mining(message))?;
                 channel_manager_io.upstream_sender.send(sv2_frame).await?;
             }
+            RouteMessageTo::UpstreamWithTlvs(message, tlvs) => {
+                let sv2_frame = frame_with_tlvs(message, &tlvs)?;
+                channel_manager_io.upstream_sender.send(sv2_frame).await?;
+            }
             RouteMessageTo::JobDeclarator(message) => {
-                channel_manager_io.jd_sender.send(message).await?;
+                channel_manager_io.jd_sender.send((message, None)).await?;
             }
             RouteMessageTo::TemplateProvider(message) => {
                 channel_manager_io.tp_sender.send(message).await?;
@@ -277,7 +283,9 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
             ));
         };
 
-        let coinbase_outputs = self.coinbase_outputs_for_template(&last_future_template)?;
+        let coinbase_outputs = self
+            .coinbase_outputs_for_template(&last_future_template)?
+            .outputs;
         let nominal_hash_rate = msg.nominal_hash_rate;
         let requested_max_target = Target::from_le_bytes(msg.max_target.to_array());
         let pool_tag_string = self.pool_tag_string.get().map_err(JDCError::shutdown)?;
@@ -614,7 +622,9 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                         .into(),
                 );
 
-                let coinbase_outputs = self.coinbase_outputs_for_template(&last_future_template)?;
+                let coinbase_outputs = self
+                    .coinbase_outputs_for_template(&last_future_template)?
+                    .outputs;
                 extended_channel
                     .on_new_template(last_future_template.clone(), coinbase_outputs)
                     .map_err(|e| {

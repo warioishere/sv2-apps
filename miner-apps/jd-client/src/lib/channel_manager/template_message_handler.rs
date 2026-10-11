@@ -1,8 +1,9 @@
 use std::sync::atomic::Ordering;
 use stratum_apps::stratum_core::{
     binary_sv2::{Seq064KOwned, U256Owned},
+    extensions_sv2::DistributionId,
     job_declaration_sv2::DeclareMiningJobOwned,
-    parsers_sv2::{JobDeclarationOwned, MiningOwned},
+    parsers_sv2::{JobDeclarationOwned, MiningOwned, TlvField},
     template_distribution_sv2::{
         NewTemplateOwned, RequestTransactionDataErrorOwned, RequestTransactionDataSuccessOwned,
     },
@@ -19,7 +20,7 @@ use stratum_apps::stratum_core::{
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    channel_manager::{ChannelManager, DeclaredJob},
+    channel_manager::{ChannelManager, DeclaredJob, JobCoinbaseOutputs},
     error::{self, JDCError, JDCErrorKind},
     utils::UpstreamState,
 };
@@ -52,7 +53,10 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
                 .map_err(JDCError::shutdown)?;
         }
 
-        let coinbase_outputs = self.coinbase_outputs_for_template(&msg)?;
+        let JobCoinbaseOutputs {
+            outputs: coinbase_outputs,
+            distribution_id,
+        } = self.coinbase_outputs_for_template(&msg)?;
 
         // Only request transaction data when the response can be consumed: building a
         // `DeclareMiningJob` requires the upstream channel and job factory, which only
@@ -165,9 +169,10 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
                             set_custom_mining_job: Some(custom_job.clone()),
                             coinbase_output: coinbase_output_bytes.clone(),
                             tx_list: Vec::new(),
+                            distribution_id,
                         },
                     );
-                    messages.push(MiningOwned::SetCustomMiningJob(custom_job).into());
+                    messages.push(ChannelManager::custom_job_route(custom_job, distribution_id)?);
                 }
             }
 
@@ -353,7 +358,10 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
         };
 
         let mining_token = token.mining_job_token.clone();
-        let deserialized_outputs = self.coinbase_outputs_for_template(&template_message)?;
+        let JobCoinbaseOutputs {
+            outputs: deserialized_outputs,
+            distribution_id,
+        } = self.coinbase_outputs_for_template(&template_message)?;
         let reserialized_outputs = consensus::serialize(&deserialized_outputs);
 
         let tx_list: Vec<Transaction> = transactions_data
@@ -426,6 +434,7 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
                                     .iter_bytes()
                                     .map(|tx| tx.to_vec())
                                     .collect(),
+                                distribution_id,
                             },
                         );
 
@@ -446,7 +455,7 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
             _ = self
                 .channel_manager_io
                 .jd_sender
-                .send(JobDeclarationOwned::DeclareMiningJob(declare_job))
+                .send(declare_mining_job_message(declare_job, distribution_id)?)
                 .await;
         }
 
@@ -461,6 +470,7 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
     ) -> Result<(), Self::Error> {
         info!("Received: {}", msg);
 
+        self.apply_pending_payout_distribution()?;
         self.cached_shares.clear();
 
         self.upstream_channel
@@ -479,15 +489,18 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
         let mut declare_job = None;
         self.last_declare_job_store.for_each(|_, declared_job| {
             if Some(declared_job.template.template_id) == future_template_id {
-                declare_job = Some(declared_job.declare_mining_job.clone());
+                declare_job = Some((
+                    declared_job.declare_mining_job.clone(),
+                    declared_job.distribution_id,
+                ));
             }
         });
 
         if self.mode.is_full_template() {
-            if let Some(Some(job)) = declare_job {
+            if let Some((Some(job), distribution_id)) = declare_job {
                 self.channel_manager_io
                     .jd_sender
-                    .send(JobDeclarationOwned::DeclareMiningJob(job))
+                    .send(declare_mining_job_message(job, distribution_id)?)
                     .await
                     .map_err(|_e| JDCError::fallback(JDCErrorKind::ChannelErrorSender))?;
             }
@@ -530,7 +543,10 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
                     let template = future_template
                         .clone()
                         .expect("future_template checked above");
-                    let outputs = self.coinbase_outputs_for_template(&template)?;
+                    let JobCoinbaseOutputs {
+                        outputs,
+                        distribution_id,
+                    } = self.coinbase_outputs_for_template(&template)?;
                     let request_id = self.request_id_factory.fetch_add(1, Ordering::Relaxed);
                     let chain_tip =
                         ChainTip::new(msg.prev_hash.clone(), msg.n_bits, msg.ntime_start);
@@ -565,9 +581,13 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
                                     .get()
                                     .map_err(JDCError::shutdown)?,
                                 tx_list: vec![],
+                                distribution_id,
                             },
                         );
-                        messages.push(MiningOwned::SetCustomMiningJob(custom_job).into());
+                        messages.push(ChannelManager::custom_job_route(
+                            custom_job,
+                            distribution_id,
+                        )?);
                     }
                 }
             }
@@ -691,4 +711,21 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
 
         Ok(())
     }
+}
+
+// Builds the message for a Full-Template `DeclareMiningJob`, with the `distribution_id` TLV of the
+// payout distribution its coinbase follows, if any.
+#[allow(clippy::result_large_err)]
+fn declare_mining_job_message(
+    declare_mining_job: DeclareMiningJobOwned,
+    distribution_id: Option<DistributionId>,
+) -> Result<(JobDeclarationOwned, Option<Vec<Tlv>>), JDCError<error::ChannelManager>> {
+    let tlvs = distribution_id
+        .map(|distribution_id| distribution_id.to_tlv().map(|tlv| vec![tlv]))
+        .transpose()
+        .map_err(JDCError::shutdown)?;
+    Ok((
+        JobDeclarationOwned::DeclareMiningJob(declare_mining_job),
+        tlvs,
+    ))
 }

@@ -1,5 +1,5 @@
-use std::{net::SocketAddr, sync::Arc};
-use stratum_apps::stratum_core::parsers_sv2::{AnyMessageOwned, JobDeclarationOwned};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
+use stratum_apps::stratum_core::parsers_sv2::{AnyMessageOwned, JobDeclarationOwned, Tlv};
 
 use async_channel::{Receiver, Sender, unbounded};
 use stratum_apps::{
@@ -8,10 +8,17 @@ use stratum_apps::{
     fallback_coordinator::FallbackCoordinator,
     network_helpers::{TCP_CONNECT_TIMEOUT, connect_with_noise, resolve_host},
     stratum_core::{
+        binary_sv2::Seq064KOwned,
         common_messages_sv2::{
             MESSAGE_TYPE_SETUP_CONNECTION_ERROR, MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
         },
-        handlers_sv2::HandleCommonMessagesFromServerOwnedAsync,
+        extensions_sv2::{
+            EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS, MESSAGE_TYPE_SET_PAYOUT_DISTRIBUTION,
+            RequestExtensionsOwned,
+        },
+        handlers_sv2::{
+            HandleCommonMessagesFromServerOwnedAsync, HandleExtensionsFromServerOwnedAsync,
+        },
         parsers_sv2::JobDeclaration,
     },
     task_manager::TaskManager,
@@ -27,16 +34,20 @@ use crate::{
     error::{self, Action, JDCError, JDCErrorKind, JDCResult, LoopControl},
     io_task::spawn_io_tasks,
     jd_mode::JDMode,
-    utils::{UpstreamEntry, get_setup_connection_message_jds},
+    utils::{UpstreamEntry, frame_with_tlvs, get_setup_connection_message_jds},
 };
 
 mod message_handler;
 
+/// How long JDC waits for each step of the Coinbase Transaction Payouts negotiation: the answer to
+/// `RequestExtensions`, then the first `SetPayoutDistribution`.
+const EXTENSION_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Holds all channels required for Job Declarator communication.
 #[derive(Clone)]
 pub struct JobDeclaratorIo {
-    channel_manager_sender: Sender<JobDeclarationOwned>,
-    channel_manager_receiver: Receiver<JobDeclarationOwned>,
+    channel_manager_sender: Sender<AnyMessageOwned>,
+    channel_manager_receiver: Receiver<(JobDeclarationOwned, Option<Vec<Tlv>>)>,
     jds_sender: Sender<OutboundFrame>,
     jds_receiver: Receiver<InboundFrame>,
 }
@@ -60,6 +71,10 @@ pub struct JobDeclarator {
     socket_address: SocketAddr,
     /// Config JDC mode
     mode: JDMode,
+    /// Whether the Coinbase Transaction Payouts extension is requested from this JDS.
+    request_coinbase_transaction_payouts: bool,
+    /// Whether the JDS agreed to the Coinbase Transaction Payouts extension.
+    coinbase_transaction_payouts_negotiated: bool,
 }
 
 #[cfg_attr(not(test), hotpath::measure_all)]
@@ -129,8 +144,8 @@ impl JobDeclarator {
     /// - Spawns background IO tasks for reading/writing frames.
     pub async fn new(
         upstream_entry: &UpstreamEntry,
-        channel_manager_sender: Sender<JobDeclarationOwned>,
-        channel_manager_receiver: Receiver<JobDeclarationOwned>,
+        channel_manager_sender: Sender<AnyMessageOwned>,
+        channel_manager_receiver: Receiver<(JobDeclarationOwned, Option<Vec<Tlv>>)>,
         cancellation_token: CancellationToken,
         fallback_coordinator: FallbackCoordinator,
         mode: JDMode,
@@ -193,6 +208,8 @@ impl JobDeclarator {
             job_declarator_io,
             socket_address: addr,
             mode,
+            request_coinbase_transaction_payouts: upstream_entry.coinbase_transaction_payouts,
+            coinbase_transaction_payouts_negotiated: false,
         })
     }
 
@@ -201,12 +218,15 @@ impl JobDeclarator {
     /// - Waits for shutdown signals.
     /// - Handles incoming messages from Job Declarator and Channel Manager.
     /// - Cleans up on termination.
+    ///
+    /// Returns whether the JDS agreed to the Coinbase Transaction Payouts extension during the
+    /// handshake.
     pub async fn start(
         mut self,
         cancellation_token: CancellationToken,
         fallback_coordinator: FallbackCoordinator,
         task_manager: Arc<TaskManager>,
-    ) {
+    ) -> bool {
         // we just spawned a new task that's relevant to fallback coordination
         // so register it with the fallback coordinator
         let fallback_handler = fallback_coordinator.register();
@@ -222,9 +242,10 @@ impl JobDeclarator {
             );
             self.job_declarator_io.close();
             fallback_handler.done();
-            return;
+            return false;
         }
 
+        let coinbase_transaction_payouts_negotiated = self.coinbase_transaction_payouts_negotiated;
         task_manager.spawn(async move {
             loop {
                 let mut self_clone_1 = self.clone();
@@ -273,6 +294,7 @@ impl JobDeclarator {
             // signal fallback coordinator that this task has completed its cleanup
             fallback_handler.done();
         });
+        coinbase_transaction_payouts_negotiated
     }
 
     /// Performs SV2 setup connection handshake with Job Declarator server.
@@ -328,16 +350,121 @@ impl JobDeclarator {
             .await?;
 
         info!("Job declarator: SV2 handshake completed successfully.");
+
+        if self.request_coinbase_transaction_payouts {
+            self.negotiate_coinbase_transaction_payouts().await?;
+        }
         Ok(())
+    }
+
+    /// Negotiates the Coinbase Transaction Payouts extension with the JDS.
+    ///
+    /// When the JDS agrees, the first `SetPayoutDistribution` must follow right away, and it is
+    /// forwarded to the Channel Manager before this returns, so that no job is declared before
+    /// the distribution is known. A JDS that rejects the extension, or does not answer at all,
+    /// leaves JDC on the base protocol.
+    async fn negotiate_coinbase_transaction_payouts(
+        &mut self,
+    ) -> JDCResult<(), error::JobDeclarator> {
+        let request_extensions = RequestExtensionsOwned {
+            request_id: 0,
+            requested_extensions: Seq064KOwned::new(vec![
+                EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS,
+            ])
+            .map_err(JDCError::shutdown)?,
+        };
+        let sv2_frame =
+            OutboundFrame::from_message(AnyMessageOwned::Extensions(request_extensions.into()))
+                .map_err(JDCError::shutdown)?;
+        self.job_declarator_io
+            .jds_sender
+            .send(sv2_frame)
+            .await
+            .map_err(|_| JDCError::fallback(JDCErrorKind::ChannelErrorSender))?;
+
+        let Some(mut response) = self.next_negotiation_frame().await? else {
+            warn!(
+                "JDS did not answer the Coinbase Transaction Payouts negotiation, continuing with the base protocol"
+            );
+            return Ok(());
+        };
+        let header = response.header();
+        if !matches!(
+            protocol_message_type(header.ext_type(), header.msg_type()),
+            MessageType::Extensions
+        ) {
+            return Err(JDCError::fallback(JDCErrorKind::UnexpectedMessage(
+                header.ext_type(),
+                header.msg_type(),
+            )));
+        }
+        self.handle_extensions_message_frame_from_server(None, header, response.payload())
+            .await?;
+        if !self.coinbase_transaction_payouts_negotiated {
+            return Ok(());
+        }
+
+        info!(
+            "Coinbase Transaction Payouts negotiated with JDS, waiting for the payout distribution"
+        );
+        let Some(mut distribution) = self.next_negotiation_frame().await? else {
+            error!("JDS negotiated Coinbase Transaction Payouts but sent no payout distribution");
+            return Err(JDCError::fallback(JDCErrorKind::Timeout));
+        };
+        let header = distribution.header();
+        if header.ext_type_without_channel_msg() != EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS
+            || header.msg_type() != MESSAGE_TYPE_SET_PAYOUT_DISTRIBUTION
+        {
+            error!("Expected SetPayoutDistribution from JDS");
+            return Err(JDCError::fallback(JDCErrorKind::UnexpectedMessage(
+                header.ext_type(),
+                header.msg_type(),
+            )));
+        }
+        self.handle_extensions_message_frame_from_server(None, header, distribution.payload())
+            .await
+    }
+
+    // Waits for the next frame from the JDS during extension negotiation. Returns `None` if
+    // nothing arrives within the negotiation timeout.
+    async fn next_negotiation_frame(
+        &mut self,
+    ) -> JDCResult<Option<InboundFrame>, error::JobDeclarator> {
+        match tokio::time::timeout(
+            EXTENSION_NEGOTIATION_TIMEOUT,
+            self.job_declarator_io.jds_receiver.recv(),
+        )
+        .await
+        {
+            Ok(frame) => Ok(Some(frame.map_err(JDCError::fallback)?)),
+            Err(_) => Ok(None),
+        }
+    }
+
+    async fn forward_to_channel_manager(
+        &self,
+        message: AnyMessageOwned,
+    ) -> JDCResult<(), error::JobDeclarator> {
+        self.job_declarator_io
+            .channel_manager_sender
+            .send(message)
+            .await
+            .map_err(|e| {
+                error!(error=?e, "Failed to send Job declarator message to channel manager.");
+                JDCError::shutdown(JDCErrorKind::ChannelErrorSender)
+            })
     }
 
     // Handles messages coming from the Channel Manager and forwards them to the Job Declarator.
     async fn handle_channel_manager_message(&self) -> JDCResult<(), error::JobDeclarator> {
         match self.job_declarator_io.channel_manager_receiver.recv().await {
-            Ok(msg) => {
+            Ok((msg, tlvs)) => {
                 debug!("Forwarding message from channel manager to JDS.");
-                let message = AnyMessageOwned::JobDeclaration(msg);
-                let sv2_frame = OutboundFrame::from_message(message).map_err(JDCError::shutdown)?;
+                let sv2_frame = match tlvs {
+                    Some(tlvs) => frame_with_tlvs(msg, &tlvs).map_err(JDCError::shutdown)?,
+                    None => OutboundFrame::from_message(AnyMessageOwned::JobDeclaration(msg))
+                        .map_err(JDCError::shutdown)?,
+                };
                 self.job_declarator_io
                     .jds_sender
                     .send(sv2_frame)
@@ -382,14 +509,12 @@ impl JobDeclarator {
                 let message = JobDeclaration::try_from((message_type, sv2_frame.payload()))
                     .map_err(JDCError::fallback)?
                     .into_owned();
-                self.job_declarator_io
-                    .channel_manager_sender
-                    .send(message)
-                    .await
-                    .map_err(|e| {
-                        error!(error=?e, "Failed to send Job declaration message to channel manager.");
-                        JDCError::shutdown(JDCErrorKind::ChannelErrorSender)
-                    })?;
+                self.forward_to_channel_manager(AnyMessageOwned::JobDeclaration(message))
+                    .await?;
+            }
+            MessageType::Extensions => {
+                self.handle_extensions_message_frame_from_server(None, header, sv2_frame.payload())
+                    .await?;
             }
             _ => {
                 warn!("Received unsupported message type from Job declarator: {message_type}");
@@ -437,6 +562,8 @@ mod tests {
             },
             socket_address: "127.0.0.1:1234".parse().expect("valid socket address"),
             mode: JDMode::new(ConfigJDCMode::FullTemplate),
+            request_coinbase_transaction_payouts: false,
+            coinbase_transaction_payouts_negotiated: false,
         };
 
         let response: Message = Message::Common(CommonMessagesOwned::ChannelEndpointChanged(

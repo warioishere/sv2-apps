@@ -12,7 +12,9 @@ use stratum_apps::{
     fallback_coordinator::FallbackCoordinator,
     stratum_core::{
         bitcoin::{TxOut, consensus::Encodable},
-        parsers_sv2::{JobDeclarationOwned, MiningOwned, TemplateDistributionOwned, Tlv},
+        parsers_sv2::{
+            AnyMessageOwned, JobDeclarationOwned, MiningOwned, TemplateDistributionOwned, Tlv,
+        },
     },
     task_manager::TaskManager,
     tp_type::{TemplateProviderType, resolve_ipc_socket_path},
@@ -42,10 +44,10 @@ struct Io {
     channel_manager_to_upstream_receiver: Receiver<OutboundFrame>,
     upstream_to_channel_manager_sender: Sender<InboundFrame>,
     upstream_to_channel_manager_receiver: Receiver<InboundFrame>,
-    channel_manager_to_jd_sender: Sender<JobDeclarationOwned>,
-    channel_manager_to_jd_receiver: Receiver<JobDeclarationOwned>,
-    jd_to_channel_manager_sender: Sender<JobDeclarationOwned>,
-    jd_to_channel_manager_receiver: Receiver<JobDeclarationOwned>,
+    channel_manager_to_jd_sender: Sender<(JobDeclarationOwned, Option<Vec<Tlv>>)>,
+    channel_manager_to_jd_receiver: Receiver<(JobDeclarationOwned, Option<Vec<Tlv>>)>,
+    jd_to_channel_manager_sender: Sender<AnyMessageOwned>,
+    jd_to_channel_manager_receiver: Receiver<AnyMessageOwned>,
     downstream_to_channel_manager_sender: Sender<(DownstreamId, MiningOwned, Option<Vec<Tlv>>)>,
     downstream_to_channel_manager_receiver: Receiver<(DownstreamId, MiningOwned, Option<Vec<Tlv>>)>,
     channel_manager_to_tp_sender: Sender<TemplateDistributionOwned>,
@@ -325,6 +327,7 @@ impl JdcRuntime<Init> {
                 authority_pubkey: u.authority_pubkey,
                 tried_or_flagged: false,
                 user_identity: u.user_identity.clone(),
+                coinbase_transaction_payouts: u.coinbase_transaction_payouts,
             })
             .collect();
 
@@ -616,7 +619,9 @@ impl JdcRuntime<ChannelManagerReady> {
                     )
                     .await;
 
-                job_declarator
+                self.state
+                    .channel_manager
+                    .coinbase_transaction_payouts_with_jds = job_declarator
                     .start(
                         self.jd_client.cancellation_token.clone(),
                         self.fallback_coordinator.clone(),

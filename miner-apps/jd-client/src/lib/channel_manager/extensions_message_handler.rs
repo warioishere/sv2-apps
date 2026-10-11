@@ -67,7 +67,12 @@ impl HandleExtensionsFromServerOwnedAsync for ChannelManager {
 
         info!("Successfully negotiated extensions: {:?}", supported);
 
-        Ok(())
+        self.pool_supports_coinbase_transaction_payouts
+            .set(Some(
+                supported.contains(&EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS),
+            ))
+            .map_err(JDCError::shutdown)?;
+        self.check_coinbase_transaction_payouts_negotiation()
     }
 
     async fn handle_request_extensions_error(
@@ -83,6 +88,11 @@ impl HandleExtensionsFromServerOwnedAsync for ChannelManager {
             "Extension negotiation error: unsupported={:?}, required_by_server={:?}",
             unsupported, required_by_server
         );
+
+        self.pool_supports_coinbase_transaction_payouts
+            .set(Some(false))
+            .map_err(JDCError::shutdown)?;
+        self.check_coinbase_transaction_payouts_negotiation()?;
 
         // Check if any of our required extensions were not supported by the server
         let missing_required: Vec<u16> = self

@@ -340,6 +340,12 @@ pub struct Upstream {
     pub jds_address: String,
     pub jds_port: u16,
     pub user_identity: String,
+    // Whether to negotiate the Coinbase Transaction Payouts extension (0x0003) with this upstream,
+    // so that the coinbase pays the pool's payout distribution directly. Off unless the pool says
+    // it supports the extension, since a JDS that does not implement extension negotiation never
+    // answers the request.
+    #[serde(default)]
+    pub coinbase_transaction_payouts: bool,
 }
 
 impl Upstream {
@@ -359,6 +365,7 @@ impl Upstream {
             jds_address,
             jds_port,
             user_identity,
+            coinbase_transaction_payouts: false,
         }
     }
 }
@@ -406,6 +413,39 @@ mod tests {
             "#
         );
         assert!(toml::from_str::<Upstream>(&toml).is_err());
+    }
+
+    #[test]
+    fn test_upstream_coinbase_transaction_payouts_defaults_to_off() {
+        let toml = format!(
+            r#"
+            authority_pubkey = "{TEST_PUBKEY}"
+            pool_address = "127.0.0.1"
+            pool_port = 3333
+            jds_address = "127.0.0.1"
+            jds_port = 3334
+            user_identity = "bc1qfallback.worker"
+            "#
+        );
+        let upstream: Upstream = toml::from_str(&toml).unwrap();
+        assert!(!upstream.coinbase_transaction_payouts);
+    }
+
+    #[test]
+    fn test_upstream_coinbase_transaction_payouts_toml_present() {
+        let toml = format!(
+            r#"
+            authority_pubkey = "{TEST_PUBKEY}"
+            pool_address = "127.0.0.1"
+            pool_port = 3333
+            jds_address = "127.0.0.1"
+            jds_port = 3334
+            user_identity = "bc1qfallback.worker"
+            coinbase_transaction_payouts = true
+            "#
+        );
+        let upstream: Upstream = toml::from_str(&toml).unwrap();
+        assert!(upstream.coinbase_transaction_payouts);
     }
 
     #[test]

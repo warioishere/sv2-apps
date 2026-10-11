@@ -32,6 +32,7 @@ use stratum_apps::{
                 share_accounting::ShareValidationError,
             },
         },
+        extensions_sv2::PayoutComputationError,
         framing_sv2,
         handlers_sv2::HandlerErrorType,
         noise_sv2,
@@ -246,6 +247,15 @@ pub enum JDCErrorKind {
     RequiredExtensionsNotSupported(Vec<u16>),
     /// Server requires extensions that the translator doesn't support
     ServerRequiresUnsupportedExtensions(Vec<u16>),
+    /// JDS negotiated Coinbase Transaction Payouts but the pool did not
+    CoinbaseTransactionPayoutsNotSupportedByPool,
+    /// JDS published a payout distribution that cannot be used: malformed outputs, or a
+    /// `distribution_id` that does not increase
+    InvalidPayoutDistribution,
+    /// The payout distribution cannot be applied to a template
+    PayoutComputation(PayoutComputationError),
+    /// Jobs built on the latest payout distribution keep being rejected as stale
+    StalePayoutDistribution,
     /// BitcoinCoreSv2TDP cancellation token activated
     BitcoinCoreSv2TDPCancellationTokenActivated,
     /// Failed to create BitcoinCoreSv2TDP tokio runtime
@@ -396,6 +406,16 @@ impl fmt::Display for JDCErrorKind {
                     "Server requires extensions that the translator doesn't support: {extensions:?}"
                 )
             }
+            CoinbaseTransactionPayoutsNotSupportedByPool => write!(
+                f,
+                "JDS negotiated Coinbase Transaction Payouts but the pool did not"
+            ),
+            InvalidPayoutDistribution => write!(f, "JDS published an invalid payout distribution"),
+            PayoutComputation(e) => write!(f, "Payout distribution cannot be applied: {e}"),
+            StalePayoutDistribution => write!(
+                f,
+                "Jobs built on the latest payout distribution keep being rejected as stale"
+            ),
             BitcoinCoreSv2TDPCancellationTokenActivated => {
                 write!(f, "BitcoinCoreSv2TDP cancellation token activated")
             }
@@ -433,6 +453,12 @@ impl fmt::Display for JDCErrorKind {
             InvalidCoinbaseOutput => write!(f, "Invalid coinbase output in config"),
             MonitoringServerError(e) => write!(f, "Failed to initialize monitoring tasks: `{e:?}`"),
         }
+    }
+}
+
+impl From<PayoutComputationError> for JDCErrorKind {
+    fn from(e: PayoutComputationError) -> Self {
+        JDCErrorKind::PayoutComputation(e)
     }
 }
 

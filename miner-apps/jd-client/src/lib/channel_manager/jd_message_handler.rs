@@ -3,6 +3,7 @@ use stratum_apps::{
         binary_sv2::{B016MOwned, Seq064KOwned},
         bitcoin::{self, TxOut},
         channels_sv2::outputs::deserialize_outputs,
+        extensions_sv2::ERROR_CODE_STALE_PAYOUT_DISTRIBUTION,
         handlers_sv2::HandleJobDeclarationMessagesFromServerOwnedAsync,
         job_declaration_sv2::{
             AllocateMiningJobTokenSuccessOwned, DeclareMiningJobErrorOwned,
@@ -50,6 +51,15 @@ impl HandleJobDeclarationMessagesFromServerOwnedAsync for ChannelManager {
     ) -> Result<(), Self::Error> {
         info!("Received: {}", msg);
 
+        // With Coinbase Transaction Payouts negotiated, `coinbase_outputs` is empty and the
+        // outputs come from the payout distribution instead.
+        if self.coinbase_transaction_payouts_with_jds {
+            self.allocate_tokens
+                .with(|tokens| tokens.push_back(msg))
+                .map_err(JDCError::shutdown)?;
+            return Ok(());
+        }
+
         let new_coinbase_outputs = msg.coinbase_outputs.to_owned_bytes();
         let coinbase_changed = self
             .coinbase_outputs
@@ -68,7 +78,6 @@ impl HandleJobDeclarationMessagesFromServerOwnedAsync for ChannelManager {
             let deserialized_jds_coinbase_outputs: Vec<TxOut> =
                 bitcoin::consensus::deserialize(msg.coinbase_outputs.as_bytes())
                     .map_err(JDCError::shutdown)?;
-
             self.coinbase_output_constraints(deserialized_jds_coinbase_outputs)
                 .await?;
             info!("Sent updated CoinbaseOutputConstraints to TP channel");
@@ -105,6 +114,13 @@ impl HandleJobDeclarationMessagesFromServerOwnedAsync for ChannelManager {
                 msg.request_id
             );
             return Ok(());
+        }
+        if error_code == ERROR_CODE_STALE_PAYOUT_DISTRIBUTION {
+            warn!(
+                "Received non-fatal DeclareMiningJobError from JDS: stale-payout-distribution (request_id={})",
+                msg.request_id
+            );
+            return self.on_stale_payout_distribution(msg.request_id);
         }
 
         warn!(
@@ -285,7 +301,7 @@ impl HandleJobDeclarationMessagesFromServerOwnedAsync for ChannelManager {
 
         self.channel_manager_io
             .jd_sender
-            .send(message)
+            .send((message, None))
             .await
             .map_err(|_e| JDCError::fallback(JDCErrorKind::ChannelErrorSender))?;
 

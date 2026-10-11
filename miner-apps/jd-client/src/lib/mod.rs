@@ -21,6 +21,7 @@ mod jdc_runtime;
 mod job_declarator;
 #[cfg(feature = "monitoring")]
 pub mod monitoring;
+mod payout_distribution;
 mod template_receiver;
 mod upstream;
 pub mod utils;
