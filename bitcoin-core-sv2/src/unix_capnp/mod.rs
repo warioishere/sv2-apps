@@ -16,6 +16,11 @@ const MIN_BLOCK_RESERVED_WEIGHT: u64 = 2000;
 /// BIP141 weight factor (witness scale factor), used to convert vsize to weight units.
 const WEIGHT_FACTOR: u64 = 4;
 
+/// Weight a SegWit block needs besides the coinbase outputs added by the Pool or JDC: block
+/// header, tx count, coinbase fixed-size fields, `scriptSig`, output count and witness
+/// commitment output.
+const BLOCK_RESERVED_WEIGHT_WITHOUT_ADDED_OUTPUTS: u64 = 1168;
+
 /// Grace period before stale template data is retired after a chain tip change, in seconds.
 ///
 /// Allows in-flight `RequestTransactionData` and `SubmitSolution` requests to complete before
@@ -38,3 +43,37 @@ const FORCE_UPDATE_MAX_ATTEMPTS: usize = 3;
 
 /// Backoff between `force_update_mempool_mirror` retry attempts (in milliseconds).
 const FORCE_UPDATE_RETRY_BACKOFF_MS: u64 = 25;
+
+/// The block weight to reserve for a coinbase whose added outputs take up to
+/// `coinbase_output_max_additional_size` bytes, as the Template Distribution Protocol requires
+/// for `CoinbaseOutputConstraints`, never below Bitcoin Core's minimum.
+fn block_reserved_weight(coinbase_output_max_additional_size: u32) -> u64 {
+    (BLOCK_RESERVED_WEIGHT_WITHOUT_ADDED_OUTPUTS
+        + coinbase_output_max_additional_size as u64 * WEIGHT_FACTOR)
+        .max(MIN_BLOCK_RESERVED_WEIGHT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn block_reserved_weight_adds_the_coinbase_outputs_to_the_rest_of_the_block() {
+        // 42 payout outputs and a pool output, as a Coinbase Transaction Payouts distribution
+        // asks for
+        assert_eq!(block_reserved_weight(1385), 1168 + 4 * 1385);
+        assert_eq!(block_reserved_weight(209), 1168 + 4 * 209);
+    }
+
+    #[test]
+    fn block_reserved_weight_never_drops_below_the_bitcoin_core_minimum() {
+        assert_eq!(block_reserved_weight(0), MIN_BLOCK_RESERVED_WEIGHT);
+        assert_eq!(block_reserved_weight(43), MIN_BLOCK_RESERVED_WEIGHT);
+        assert_eq!(block_reserved_weight(208), MIN_BLOCK_RESERVED_WEIGHT);
+    }
+
+    #[test]
+    fn block_reserved_weight_does_not_overflow() {
+        assert_eq!(block_reserved_weight(u32::MAX), 1168 + 4 * u32::MAX as u64);
+    }
+}

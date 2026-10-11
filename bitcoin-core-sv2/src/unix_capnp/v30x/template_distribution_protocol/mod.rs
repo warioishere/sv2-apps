@@ -2,7 +2,7 @@
 //! capnp over UNIX socket.
 
 use crate::unix_capnp::{
-    MIN_BLOCK_RESERVED_WEIGHT, STALE_TEMPLATE_GRACE_PERIOD_SECS, WEIGHT_FACTOR,
+    STALE_TEMPLATE_GRACE_PERIOD_SECS, block_reserved_weight,
     v30x::template_distribution_protocol::template_data::TemplateData,
 };
 use async_channel::{Receiver, Sender};
@@ -527,9 +527,8 @@ impl BitcoinCoreSv2TDP {
                 e
             })?;
 
-        let coinbase_weight =
-            coinbase_output_constraints.coinbase_output_max_additional_size as u64 * WEIGHT_FACTOR;
-        let block_reserved_weight = coinbase_weight.max(MIN_BLOCK_RESERVED_WEIGHT); // 2000 is the minimum block reserved weight
+        let block_reserved_weight =
+            block_reserved_weight(coinbase_output_constraints.coinbase_output_max_additional_size);
         debug!("Setting block_reserved_weight: {block_reserved_weight}");
         template_ipc_client_request_options.set_block_reserved_weight(block_reserved_weight);
         template_ipc_client_request_options.set_coinbase_output_max_additional_sigops(
