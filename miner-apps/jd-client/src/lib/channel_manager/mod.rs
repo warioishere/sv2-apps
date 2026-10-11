@@ -34,6 +34,7 @@ use stratum_apps::{
             server::{group::GroupChannel, jobs::factory::JobFactory, standard::StandardChannel},
             target::hash_rate_to_target,
         },
+        extensions_sv2::{DistributionId, PayoutComputationError},
         handlers_sv2::{
             HandleExtensionsFromServerOwnedAsync, HandleJobDeclarationMessagesFromServerOwnedAsync,
             HandleMiningMessagesFromClientOwnedAsync, HandleMiningMessagesFromServerOwnedAsync,
@@ -42,7 +43,8 @@ use stratum_apps::{
         job_declaration_sv2::DeclareMiningJobOwned,
         mining_sv2::SetCustomMiningJobOwned,
         parsers_sv2::{
-            AnyMessageOwned, JobDeclarationOwned, MiningOwned, TemplateDistributionOwned, Tlv,
+            AnyMessageOwned, CoinbaseTransactionPayoutsOwned, ExtensionsOwned, IsSv2Message,
+            JobDeclarationOwned, MiningOwned, TemplateDistributionOwned, Tlv, TlvField,
         },
         template_distribution_sv2::{NewTemplateOwned, SetNewPrevHashOwned as SetNewPrevHashTdp},
     },
@@ -65,6 +67,7 @@ use crate::{
     downstream::Downstream,
     error::{self, Action, JDCError, JDCErrorKind, JDCResult, LoopControl},
     jd_mode::JDMode,
+    payout_distribution::PayoutDistribution,
     utils::{
         AtomicUpstreamState, DownstreamChannelJobId, DownstreamMessage, PendingChannelRequest,
         SharesOrderedByDiff, UpstreamState, upstream_channel_update,
@@ -77,6 +80,8 @@ mod extensions_message_handler;
 mod jd_message_handler;
 mod template_message_handler;
 mod upstream_message_handler;
+
+use jd_message_handler::fits_a_job_coinbase;
 
 // ============================================================================
 // JDC extranonce layout
@@ -138,6 +143,15 @@ const MAX_WAITING_FOR_TOKEN: usize = 4;
 // through, whatever the reason.
 const MAX_CONSECUTIVE_DECLARATION_REFUSALS: u32 = 10;
 
+/// How many `stale-payout-distribution` rejections in a row of jobs built on the latest received
+/// payout distribution JDC accepts before falling back.
+///
+/// A rejection of a job built on an older distribution is an honest race and does not count. One
+/// built on the latest can still be honest: a JDS invalidates every distribution when the pool
+/// settles a found block, and the fresh one may still be in flight. Repeated rejections of the
+/// latest one are not explained by that.
+const MAX_STALE_PAYOUT_DISTRIBUTION_REJECTIONS: u32 = 3;
+
 // The custom job of one template, from its declaration in full-template mode to the Pool's
 // acknowledgement. Its `DeclareMiningJob` and its `SetCustomMiningJob` carry the same request ID.
 #[derive(Clone, Debug)]
@@ -146,6 +160,8 @@ struct CustomJob {
     template: NewTemplateOwned,
     // The outputs the job's coinbase pays.
     coinbase_outputs: Vec<TxOut>,
+    // The payout distribution the job's coinbase follows, if any.
+    distribution_id: Option<DistributionId>,
     stage: CustomJobStage,
 }
 
@@ -237,9 +253,13 @@ impl CustomJobs {
     }
 
     // Declares the `Undeclared` job of the template `prev_hash` activates: the job becomes
-    // `Declared` on that chain tip, and its declaration is returned to send. A template whose job
-    // is past `Undeclared`, or has none, returns `None`.
-    fn declare(&mut self, prev_hash: &SetNewPrevHashTdp) -> Option<DeclareMiningJobOwned> {
+    // `Declared` on that chain tip, and its declaration is returned to send, with the payout
+    // distribution its coinbase follows. A template whose job is past `Undeclared`, or has none,
+    // returns `None`.
+    fn declare(
+        &mut self,
+        prev_hash: &SetNewPrevHashTdp,
+    ) -> Option<(DeclareMiningJobOwned, Option<DistributionId>)> {
         let job = self.0.get_mut(&prev_hash.template_id)?;
         let CustomJobStage::Undeclared {
             declaration,
@@ -255,7 +275,7 @@ impl CustomJobs {
             transactions: transactions.into_iter().map(Some).collect(),
         };
         job.template.future_template = false;
-        Some(declaration)
+        Some((declaration, job.distribution_id))
     }
 
     // Hands out the transactions at `positions` of the `Declared` job of `request_id`, in that
@@ -479,13 +499,26 @@ impl WaitingForToken {
     }
 }
 
+// What the coinbase outputs of a set pay.
+#[derive(Debug, PartialEq)]
+enum Payout {
+    // Outputs at 0 sats, the miner's own or the ones a JDS token answer hands out: a job puts the
+    // template's revenue in the first.
+    Outputs(Vec<TxOut>),
+    // A payout distribution of the Coinbase Transaction Payouts extension (0x0003), which sets
+    // every amount from the template's revenue.
+    Distribution(PayoutDistribution),
+}
+
 // A set of coinbase outputs JDC puts in the downstream jobs of the templates it hands out.
 #[derive(Debug)]
 struct OutputSet {
     // The first template handed out with these outputs, once there is one.
     first_template: Option<TemplateId>,
-    outputs: Vec<TxOut>,
-    // `outputs` serialized, as a token answer carries them.
+    payout: Payout,
+    // The coinbase outputs a token answer carries along with these outputs: the outputs
+    // serialized, or none with a payout distribution, as a JDS hands its tokens out under the
+    // Coinbase Transaction Payouts extension.
     serialized: Vec<u8>,
     // Whether these are the miner's own outputs, which JDC uses until the JDS's first answer:
     // work handed out with them is solo mining, and never goes upstream.
@@ -497,8 +530,39 @@ impl OutputSet {
         Self {
             first_template: None,
             serialized: consensus::serialize(&outputs),
-            outputs,
+            payout: Payout::Outputs(outputs),
             miners_own,
+        }
+    }
+
+    fn distribution(distribution: PayoutDistribution) -> Self {
+        Self {
+            first_template: None,
+            serialized: Vec::new(),
+            payout: Payout::Distribution(distribution),
+            miners_own: false,
+        }
+    }
+
+    // The outputs a job built from a template leaving `revenue` for the coinbase pays.
+    fn coinbase_outputs(&self, revenue: u64) -> Result<Vec<TxOut>, PayoutComputationError> {
+        match &self.payout {
+            Payout::Outputs(outputs) => {
+                let mut outputs = outputs.clone();
+                outputs[0].value = Amount::from_sat(revenue);
+                Ok(outputs)
+            }
+            Payout::Distribution(distribution) => distribution.coinbase_outputs(revenue),
+        }
+    }
+
+    // The payout distribution a job paying these outputs names in its `distribution_id` TLV.
+    fn distribution_id(&self) -> Option<DistributionId> {
+        match &self.payout {
+            Payout::Outputs(_) => None,
+            Payout::Distribution(distribution) => {
+                Some(DistributionId(distribution.distribution_id))
+            }
         }
     }
 }
@@ -517,12 +581,18 @@ impl OutputSet {
 // of their own, whatever their size. From then on it only grows: new constraints can make the
 // Template Provider start over, as the in-tree one does with a new template and prevhash, which
 // ends the work JDC has waiting, so JDC keeps the larger reservation rather than give room back.
+//
+// Payout distributions of the Coinbase Transaction Payouts extension (0x0003) follow that
+// extension's rules instead (see `update_distribution`).
 #[derive(Debug)]
 struct OutputSets {
     sets: VecDeque<OutputSet>,
     // The room reserved for the JDS's outputs, once JDC asked for it: `None` while the miner's own
     // outputs are the current ones.
     room: Option<CoinbaseOutputConstraintsOwned>,
+    // A payout distribution needing more room than the templates JDC receives reserve, until a
+    // template reserving it arrives (see `update_distribution`).
+    pending: Option<OutputSet>,
 }
 
 impl OutputSets {
@@ -531,6 +601,7 @@ impl OutputSets {
         Self {
             sets: VecDeque::from([OutputSet::new(outputs, true)]),
             room: None,
+            pending: None,
         }
     }
 
@@ -539,11 +610,19 @@ impl OutputSets {
         self.sets.back().expect("there is always a set of outputs")
     }
 
+    // Makes `set` the one the next template is handed out with. A set no template was handed out
+    // with is replaced rather than kept.
+    fn push(&mut self, set: OutputSet) {
+        if self.current().first_template.is_none() {
+            self.sets.pop_back();
+        }
+        self.sets.push_back(set);
+    }
+
     // Takes `outputs` from a JDS answer, which need `needed` in the Template Provider's templates,
     // as the ones the next template is handed out with. Returns the constraints to send the
     // Template Provider when the room it reserves doesn't fit `needed` yet: the larger of the room
-    // and `needed` in each field, which the room becomes. A set no template was handed out with is
-    // replaced rather than kept.
+    // and `needed` in each field, which the room becomes.
     fn update(
         &mut self,
         outputs: Vec<TxOut>,
@@ -552,15 +631,12 @@ impl OutputSets {
         let current = self.current();
         if current.miners_own {
             info!("Templates are handed out with the JDS's coinbase outputs from now on");
-        } else if current.outputs == outputs {
+        } else if matches!(&current.payout, Payout::Outputs(current) if *current == outputs) {
             return None;
         } else {
             info!("The JDS's coinbase outputs changed");
         }
-        if current.first_template.is_none() {
-            self.sets.pop_back();
-        }
-        self.sets.push_back(OutputSet::new(outputs, false));
+        self.push(OutputSet::new(outputs, false));
 
         let room = match self.room {
             Some(room)
@@ -583,6 +659,64 @@ impl OutputSets {
         };
         self.room = Some(room);
         Some(room)
+    }
+
+    // Takes a new payout `distribution`, whose outputs need `needed` in the Template Provider's
+    // templates. Returns the constraints to send the Template Provider: `needed`, whenever it
+    // differs from the room reserved (ext 0x0003, `CoinbaseOutputConstraints`).
+    //
+    // The distribution is the one the next template is handed out with when the templates JDC
+    // receives already have room for it. Otherwise it waits, and the templates keep the previous
+    // distribution, until the Template Provider sends a template reserving the new room
+    // (`on_future_template`). The first distribution always waits: before it, the Template
+    // Provider builds its templates under no constraints of this channel manager's, or under the
+    // ones a channel manager it falls back from sent.
+    fn update_distribution(
+        &mut self,
+        distribution: PayoutDistribution,
+        needed: CoinbaseOutputConstraintsOwned,
+    ) -> Option<CoinbaseOutputConstraintsOwned> {
+        let fits = self.pending.is_none()
+            && self.room.is_some_and(|room| {
+                needed.coinbase_output_max_additional_size
+                    <= room.coinbase_output_max_additional_size
+                    && needed.coinbase_output_max_additional_sigops
+                        <= room.coinbase_output_max_additional_sigops
+            });
+        let set = OutputSet::distribution(distribution);
+        if fits {
+            self.push(set);
+        } else {
+            self.pending = Some(set);
+        }
+        if self.room == Some(needed) {
+            return None;
+        }
+        self.room = Some(needed);
+        Some(needed)
+    }
+
+    // A future template arriving. A Template Provider answers new constraints with a future
+    // template built under them and the prevhash that activates it, as the in-tree one does, so a
+    // payout distribution waiting for room is handed out from this template on.
+    //
+    // A future template the Template Provider built before applying the constraints, but sent
+    // after JDC sent them, can't be told apart: `NewTemplate` doesn't say which constraints it
+    // was built under. With the Template Provider on the same host or LAN that window is under a
+    // round trip.
+    fn on_future_template(&mut self) {
+        if let Some(pending) = self.pending.take() {
+            info!("Templates are handed out with the payout distribution that waited for room");
+            self.push(pending);
+        }
+    }
+
+    // The latest payout distribution JDC received, waiting for room or not.
+    fn latest_distribution_id(&self) -> Option<DistributionId> {
+        self.pending
+            .as_ref()
+            .unwrap_or_else(|| self.current())
+            .distribution_id()
     }
 
     // Records that `template_id` is handed out with the current outputs.
@@ -646,8 +780,8 @@ impl OutputSets {
 pub struct ChannelManagerIo {
     upstream_sender: Sender<OutboundFrame>,
     upstream_receiver: Receiver<InboundFrame>,
-    jd_sender: Sender<JobDeclarationOwned>,
-    jd_receiver: Receiver<JobDeclarationOwned>,
+    jd_sender: Sender<(JobDeclarationOwned, Option<Vec<Tlv>>)>,
+    jd_receiver: Receiver<AnyMessageOwned>,
     tp_sender: Sender<TemplateDistributionOwned>,
     tp_receiver: Receiver<TemplateDistributionOwned>,
     downstream_sender: SharedMap<DownstreamId, Sender<DownstreamMessage>>,
@@ -781,6 +915,12 @@ pub struct ChannelManager {
     pub vardiff: SharedMap<VardiffKey, VardiffState>,
     /// Extensions that have been successfully negotiated with the upstream server.
     pub negotiated_extensions: SharedLock<Vec<u16>>,
+    /// Whether the JDS agreed to the Coinbase Transaction Payouts extension. Known before the
+    /// Channel Manager starts.
+    pub coinbase_transaction_payouts_with_jds: bool,
+    /// Consecutive `stale-payout-distribution` rejections of jobs built on the latest received
+    /// payout distribution, see [`MAX_STALE_PAYOUT_DISTRIBUTION_REJECTIONS`].
+    pub stale_payout_distribution_rejections: Arc<AtomicU32>,
     /// Extensions JDC agrees to use with its upstream when the upstream requires them.
     pub supported_extensions: Vec<u16>,
     /// Extensions JDC requires its upstream to support.
@@ -873,8 +1013,8 @@ impl ChannelManager {
         config: JobDeclaratorClientConfig,
         upstream_sender: Sender<OutboundFrame>,
         upstream_receiver: Receiver<InboundFrame>,
-        jd_sender: Sender<JobDeclarationOwned>,
-        jd_receiver: Receiver<JobDeclarationOwned>,
+        jd_sender: Sender<(JobDeclarationOwned, Option<Vec<Tlv>>)>,
+        jd_receiver: Receiver<AnyMessageOwned>,
         tp_sender: Sender<TemplateDistributionOwned>,
         tp_receiver: Receiver<TemplateDistributionOwned>,
         downstream_receiver: Receiver<(DownstreamId, MiningOwned, Option<Vec<Tlv>>)>,
@@ -932,6 +1072,8 @@ impl ChannelManager {
             job_factory: SharedLock::new(None),
             vardiff: SharedMap::new(),
             negotiated_extensions: SharedLock::new(vec![]),
+            coinbase_transaction_payouts_with_jds: false,
+            stale_payout_distribution_rejections: Arc::new(AtomicU32::new(0)),
             supported_extensions,
             required_extensions,
             cached_shares: SharedMap::new(),
@@ -1281,7 +1423,11 @@ impl ChannelManager {
         task_manager: Arc<TaskManager>,
         coinbase_outputs: Vec<TxOut>,
     ) -> JDCResult<(), error::ChannelManager> {
-        self.coinbase_output_constraints(coinbase_outputs).await?;
+        // With Coinbase Transaction Payouts negotiated, the first constraints follow from the
+        // first payout distribution instead (ext 0x0003, `Negotiation`).
+        if !self.coinbase_transaction_payouts_with_jds {
+            self.coinbase_output_constraints(coinbase_outputs).await?;
+        }
 
         let fallback_token = fallback_coordinator.token();
         task_manager.spawn(fallback_coordinator.track(async move {
@@ -1423,6 +1569,8 @@ impl ChannelManager {
     /// This method listens for incoming frames on the `jd_receiver` channel.  
     /// - If the frame contains a JobDeclaration message, it forwards it to the   job declaration
     ///   message handler.
+    /// - If the frame contains a `SetPayoutDistribution`, it becomes the latest payout
+    ///   distribution.
     /// - If the frame contains any unsupported message type, an error is returned.
     async fn handle_jds_message(&mut self) -> JDCResult<(), error::ChannelManager> {
         let message = self
@@ -1432,8 +1580,142 @@ impl ChannelManager {
             .await
             .map_err(JDCError::fallback)?;
 
-        self.handle_job_declaration_message_from_server(None, message, None)
-            .await?;
+        match message {
+            AnyMessageOwned::JobDeclaration(message) => {
+                self.handle_job_declaration_message_from_server(None, message, None)
+                    .await?;
+            }
+            AnyMessageOwned::Extensions(ExtensionsOwned::CoinbaseTransactionPayouts(
+                CoinbaseTransactionPayoutsOwned::SetPayoutDistribution(distribution),
+            )) => {
+                info!("Received: {}", distribution);
+                let distribution =
+                    PayoutDistribution::try_from(distribution).map_err(JDCError::fallback)?;
+                self.on_payout_distribution(distribution).await?;
+            }
+            other => {
+                return Err(JDCError::log(JDCErrorKind::UnexpectedMessage(
+                    other.extension_type(),
+                    other.message_type(),
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Takes a new payout distribution from the JDS.
+    ///
+    /// Its outputs must fit a job's coinbase and `CoinbaseOutputConstraints`, as a token answer's
+    /// must in the base protocol, and its `distribution_id` must increase; JDC falls back from a
+    /// JDS whose distribution doesn't. The Template Provider gets the constraints the distribution
+    /// needs whenever they change, and the distribution becomes the one templates are handed out
+    /// with once the templates have room for it (see `OutputSets::update_distribution`).
+    async fn on_payout_distribution(
+        &self,
+        distribution: PayoutDistribution,
+    ) -> JDCResult<(), error::ChannelManager> {
+        let latest_id = self
+            .output_sets
+            .with(|output_sets| output_sets.latest_distribution_id())
+            .map_err(JDCError::shutdown)?;
+        if latest_id
+            .is_some_and(|DistributionId(latest_id)| distribution.distribution_id <= latest_id)
+        {
+            error!(
+                distribution_id = distribution.distribution_id,
+                ?latest_id,
+                "JDS published a distribution_id that does not increase"
+            );
+            return Err(JDCError::fallback(JDCErrorKind::InvalidPayoutDistribution));
+        }
+
+        let outputs = distribution.outputs();
+        if !fits_a_job_coinbase(&outputs) {
+            error!(
+                distribution_id = distribution.distribution_id,
+                "Payout distribution is too big for a job's coinbase"
+            );
+            return Err(JDCError::fallback(JDCErrorKind::InvalidPayoutDistribution));
+        }
+        let needed = coinbase_output_constraints_message(outputs).map_err(|e| {
+            error!(error = %e, "Payout distribution doesn't fit CoinbaseOutputConstraints");
+            JDCError::fallback(JDCErrorKind::CoinbaseOutputConstraints(e))
+        })?;
+
+        let distribution_id = distribution.distribution_id;
+        let constraints = self
+            .output_sets
+            .with(|output_sets| output_sets.update_distribution(distribution, needed))
+            .map_err(JDCError::shutdown)?;
+        self.stale_payout_distribution_rejections
+            .store(0, Ordering::Relaxed);
+        if let Some(constraints) = constraints {
+            self.channel_manager_io
+                .tp_sender
+                .send(TemplateDistributionOwned::CoinbaseOutputConstraints(
+                    constraints,
+                ))
+                .await
+                .map_err(|_e| JDCError::shutdown(JDCErrorKind::ChannelErrorSender))?;
+            info!(
+                distribution_id,
+                "Sent CoinbaseOutputConstraints for the payout distribution to TP channel"
+            );
+        }
+        Ok(())
+    }
+
+    /// Handles a `stale-payout-distribution` rejection of `rejected`, the custom job the caller
+    /// took out for the answer.
+    ///
+    /// The job is dropped with the shares cached for its template. JDC falls back only when such
+    /// rejections persist for jobs built on the latest received distribution, see
+    /// [`MAX_STALE_PAYOUT_DISTRIBUTION_REJECTIONS`].
+    #[allow(clippy::result_large_err)]
+    fn on_stale_payout_distribution(
+        &self,
+        rejected: CustomJob,
+    ) -> JDCResult<(), error::ChannelManager> {
+        self.cached_shares.remove(&rejected.template.template_id);
+
+        let latest_id = self
+            .output_sets
+            .with(|output_sets| output_sets.latest_distribution_id())
+            .map_err(JDCError::shutdown)?;
+        if rejected.distribution_id.is_none() || rejected.distribution_id != latest_id {
+            return Ok(());
+        }
+        let rejections = self
+            .stale_payout_distribution_rejections
+            .fetch_add(1, Ordering::Relaxed)
+            + 1;
+        if rejections >= MAX_STALE_PAYOUT_DISTRIBUTION_REJECTIONS {
+            error!(
+                rejections,
+                "Jobs built on the latest payout distribution keep being rejected as stale"
+            );
+            return Err(JDCError::fallback(JDCErrorKind::StalePayoutDistribution));
+        }
+        Ok(())
+    }
+
+    /// Falls back when the JDS agreed to the Coinbase Transaction Payouts extension but the pool,
+    /// answering `RequestExtensions`, did not.
+    ///
+    /// The extension must be negotiated on both connections to be used (ext 0x0003,
+    /// `Negotiation`). Once the JDS has agreed, its `AllocateMiningJobToken.Success` carries no
+    /// pool payout output, so there is nothing to build a base protocol job from either.
+    #[allow(clippy::result_large_err)]
+    pub(crate) fn check_coinbase_transaction_payouts_negotiation(
+        &self,
+        pool_supports: bool,
+    ) -> JDCResult<(), error::ChannelManager> {
+        if self.coinbase_transaction_payouts_with_jds && !pool_supports {
+            error!("JDS negotiated Coinbase Transaction Payouts but the pool did not");
+            return Err(JDCError::fallback(
+                JDCErrorKind::CoinbaseTransactionPayoutsNotSupportedByPool,
+            ));
+        }
         Ok(())
     }
 
@@ -1830,7 +2112,7 @@ impl ChannelManager {
 
             self.channel_manager_io
                 .jd_sender
-                .send(message)
+                .send((message, None))
                 .await
                 .map_err(|e| {
                     info!(error = ?e, "Failed to send AllocateMiningJobToken frame");
@@ -1843,18 +2125,58 @@ impl ChannelManager {
     }
 
     // The coinbase outputs a job built from `template` pays: the outputs JDC put in the template's
-    // downstream jobs, with everything the template leaves for the coinbase in the first one.
+    // downstream jobs, paying everything the template leaves for the coinbase. A payout
+    // distribution that can't be applied to the template, its fixed outputs taking the whole
+    // revenue, makes JDC fall back (ext 0x0003, `Payout Computation`).
     #[allow(clippy::result_large_err)]
     fn coinbase_outputs_for(
         &self,
         template: &NewTemplateOwned,
     ) -> JDCResult<Vec<TxOut>, error::ChannelManager> {
-        let mut outputs = self
-            .output_sets
-            .with(|output_sets| output_sets.of(template.template_id).outputs.clone())
-            .map_err(JDCError::shutdown)?;
-        outputs[0].value = Amount::from_sat(template.coinbase_tx_value_remaining);
-        Ok(outputs)
+        self.output_sets
+            .with(|output_sets| {
+                output_sets
+                    .of(template.template_id)
+                    .coinbase_outputs(template.coinbase_tx_value_remaining)
+            })
+            .map_err(JDCError::shutdown)?
+            .map_err(|e| {
+                error!(
+                    error = ?e,
+                    template_id = template.template_id,
+                    "Payout distribution cannot be applied to the template"
+                );
+                JDCError::fallback(e)
+            })
+    }
+
+    // The payout distribution a job built from `template` follows, if any: the one JDC put in the
+    // template's downstream jobs.
+    #[allow(clippy::result_large_err)]
+    fn distribution_id_of(
+        &self,
+        template: &NewTemplateOwned,
+    ) -> JDCResult<Option<DistributionId>, error::ChannelManager> {
+        self.output_sets
+            .with(|output_sets| output_sets.of(template.template_id).distribution_id())
+            .map_err(JDCError::shutdown)
+    }
+
+    /// Routes a Coinbase-only `SetCustomMiningJob` upstream, with the `distribution_id` TLV of
+    /// the payout distribution its coinbase follows, if any.
+    #[allow(clippy::result_large_err)]
+    pub(crate) fn custom_job_route(
+        custom_job: SetCustomMiningJobOwned,
+        distribution_id: Option<DistributionId>,
+    ) -> JDCResult<RouteMessageTo, error::ChannelManager> {
+        let message = MiningOwned::SetCustomMiningJob(custom_job);
+        match distribution_id {
+            Some(distribution_id) => Ok(RouteMessageTo::UpstreamWithTlvs(
+                message,
+                vec![distribution_id.to_tlv().map_err(JDCError::shutdown)?],
+            )),
+            None => Ok(RouteMessageTo::Upstream(message)),
+        }
     }
 
     // Whether work on `template` can go upstream: a template handed out with the miner's own
@@ -1908,7 +2230,9 @@ impl ChannelManager {
     }
 
     // Builds the coinbase-only custom job that puts `template` on the upstream channel, paying
-    // the outputs from `coinbase_outputs_for`, records it, and spends a token on it.
+    // the outputs from `coinbase_outputs_for`, records it, and spends a token on it. Returns the
+    // route that sends it upstream, with the `distribution_id` TLV when its coinbase follows a
+    // payout distribution.
     //
     // Returns `None` while there is no upstream channel, chain tip for the template, job factory
     // or token to build the job with, and an error when the job factory rejects the template. A
@@ -1920,7 +2244,7 @@ impl ChannelManager {
     async fn build_coinbase_only_custom_job(
         &self,
         template: &NewTemplateOwned,
-    ) -> JDCResult<Option<SetCustomMiningJobOwned>, error::ChannelManager> {
+    ) -> JDCResult<Option<RouteMessageTo>, error::ChannelManager> {
         let upstream_channel = self
             .upstream_channel
             .with(|channel| {
@@ -1962,6 +2286,7 @@ impl ChannelManager {
             return Ok(None);
         };
         let coinbase_outputs = self.coinbase_outputs_for(template)?;
+        let distribution_id = self.distribution_id_of(template)?;
 
         let custom_job = self
             .job_factory
@@ -2003,13 +2328,14 @@ impl ChannelManager {
                     request_id: custom_job.request_id,
                     template: template.clone(),
                     coinbase_outputs,
+                    distribution_id,
                     stage: CustomJobStage::Proposed {
                         custom_job: custom_job.clone(),
                     },
                 })
             })
             .map_err(JDCError::shutdown)?;
-        Ok(Some(custom_job))
+        Ok(Some(Self::custom_job_route(custom_job, distribution_id)?))
     }
 
     // Runs the vardiff on extended channel.

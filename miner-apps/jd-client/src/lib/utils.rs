@@ -30,6 +30,7 @@ use stratum_apps::stratum_core::{
 use stratum_apps::{
     key_utils::Secp256k1PublicKey,
     stratum_core::{
+        binary_sv2::{GetSize, Serialize},
         bitcoin::{
             Target,
             hashes::{Hash as _, sha256d},
@@ -37,10 +38,10 @@ use stratum_apps::{
         channels_sv2::client::{self, extended::ExtendedChannel},
         common_messages_sv2::{Protocol, SetupConnectionOwned},
         mining_sv2::SubmitSharesExtendedOwned,
-        parsers_sv2::{JobDeclarationOwned, MiningOwned, Tlv},
+        parsers_sv2::{IsSv2Message, JobDeclarationOwned, MiningOwned, Tlv, TlvList},
         template_distribution_sv2::SetNewPrevHashOwned as SetNewPrevHashTdp,
     },
-    utils::types::{ChannelId, DownstreamId, Hashrate, JobId},
+    utils::types::{ChannelId, DownstreamId, Hashrate, InboundFrame, JobId, OutboundFrame},
 };
 use tracing::{debug, info};
 
@@ -64,6 +65,22 @@ pub struct UpstreamEntry {
     pub authority_pubkey: Secp256k1PublicKey,
     pub tried_or_flagged: bool,
     pub user_identity: String,
+    /// Whether the Coinbase Transaction Payouts extension (0x0003) is negotiated with this
+    /// upstream.
+    pub coinbase_transaction_payouts: bool,
+}
+
+/// Frames `message` with `tlvs` appended to its payload.
+pub fn frame_with_tlvs<T>(message: T, tlvs: &[Tlv]) -> Result<OutboundFrame, JDCErrorKind>
+where
+    T: Serialize + GetSize + IsSv2Message,
+{
+    let frame_bytes = TlvList::from_slice(tlvs)
+        .and_then(|tlv_list| tlv_list.build_frame_bytes_with_tlvs(message))
+        .map_err(|_| JDCErrorKind::FrameConversionError)?;
+    let frame = InboundFrame::from_bytes(frame_bytes.into())
+        .map_err(|_| JDCErrorKind::FrameConversionError)?;
+    Ok(frame.into())
 }
 
 /// Constructs a `SetupConnection` message for the mining protocol.

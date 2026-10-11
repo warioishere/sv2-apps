@@ -1,8 +1,9 @@
 use std::sync::atomic::Ordering;
 use stratum_apps::stratum_core::{
     binary_sv2::{Seq064KOwned, U256Owned},
+    extensions_sv2::DistributionId,
     job_declaration_sv2::DeclareMiningJobOwned,
-    parsers_sv2::{JobDeclarationOwned, MiningOwned},
+    parsers_sv2::{JobDeclarationOwned, MiningOwned, TlvField},
     template_distribution_sv2::{
         NewTemplateOwned, RequestTransactionDataErrorOwned, RequestTransactionDataSuccessOwned,
     },
@@ -46,9 +47,15 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
 
         // JDC hands the template out with the outputs it holds now: they go in the downstream jobs
         // built below, and every job built from the template later, downstream or upstream, pays
-        // them.
+        // them. A future template is the first that can reserve the room a payout distribution
+        // waits for.
         self.output_sets
-            .with(|output_sets| output_sets.hand_out(msg.template_id))
+            .with(|output_sets| {
+                if msg.future_template {
+                    output_sets.on_future_template();
+                }
+                output_sets.hand_out(msg.template_id)
+            })
             .map_err(JDCError::shutdown)?;
 
         if msg.future_template {
@@ -80,7 +87,7 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
         let mut messages: Vec<crate::channel_manager::downstream_message_handler::RouteMessageTo> =
             Vec::new();
         if let Some(custom_job) = custom_job {
-            messages.push(MiningOwned::SetCustomMiningJob(custom_job).into());
+            messages.push(custom_job);
         }
 
         self.downstream.try_for_each(|downstream_id, downstream| {
@@ -368,10 +375,10 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
             .custom_jobs
             .with(|jobs| jobs.declare(&msg))
             .map_err(JDCError::shutdown)?;
-        if let Some(declaration) = declaration {
+        if let Some((declaration, distribution_id)) = declaration {
             self.channel_manager_io
                 .jd_sender
-                .send(JobDeclarationOwned::DeclareMiningJob(declaration))
+                .send(declare_mining_job_message(declaration, distribution_id)?)
                 .await
                 .map_err(|_e| JDCError::fallback(JDCErrorKind::ChannelErrorSender))?;
         }
@@ -392,7 +399,7 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
         };
         let token_consumed = custom_job.is_some();
         if let Some(custom_job) = custom_job {
-            messages.push(MiningOwned::SetCustomMiningJob(custom_job).into());
+            messages.push(custom_job);
         }
 
         self.downstream.try_for_each(|downstream_id, downstream| {
@@ -557,6 +564,7 @@ impl ChannelManager {
 
         let mining_token = token.mining_job_token.clone();
         let deserialized_outputs = self.coinbase_outputs_for(&template)?;
+        let distribution_id = self.distribution_id_of(&template)?;
 
         let tx_list: Vec<Transaction> = transactions_data
             .iter_bytes()
@@ -671,6 +679,7 @@ impl ChannelManager {
                     request_id,
                     template,
                     coinbase_outputs: deserialized_outputs,
+                    distribution_id,
                     stage,
                 })
             })
@@ -682,11 +691,28 @@ impl ChannelManager {
         _ = self
             .channel_manager_io
             .jd_sender
-            .send(JobDeclarationOwned::DeclareMiningJob(declare_job))
+            .send(declare_mining_job_message(declare_job, distribution_id)?)
             .await;
 
         Ok(true)
     }
+}
+
+// Builds the message for a Full-Template `DeclareMiningJob`, with the `distribution_id` TLV of the
+// payout distribution its coinbase follows, if any.
+#[allow(clippy::result_large_err)]
+fn declare_mining_job_message(
+    declare_mining_job: DeclareMiningJobOwned,
+    distribution_id: Option<DistributionId>,
+) -> Result<(JobDeclarationOwned, Option<Vec<Tlv>>), JDCError<error::ChannelManager>> {
+    let tlvs = distribution_id
+        .map(|distribution_id| distribution_id.to_tlv().map(|tlv| vec![tlv]))
+        .transpose()
+        .map_err(JDCError::shutdown)?;
+    Ok((
+        JobDeclarationOwned::DeclareMiningJob(declare_mining_job),
+        tlvs,
+    ))
 }
 
 #[cfg(test)]
@@ -708,6 +734,7 @@ mod tests {
                 server::{group::GroupChannel, jobs::factory::JobFactory},
             },
             codec_sv2::EncodableFrame as _,
+            extensions_sv2::SetPayoutDistributionOwned,
             job_declaration_sv2::{
                 AllocateMiningJobTokenSuccessOwned, DeclareMiningJobErrorOwned,
                 DeclareMiningJobSuccessOwned, ERROR_CODE_DECLARE_MINING_JOB_MISSING_TXS,
@@ -729,12 +756,13 @@ mod tests {
     use crate::{
         channel_manager::{
             MAX_CONSECUTIVE_DECLARATION_REFUSALS, MAX_REQUESTED_TEMPLATES, MAX_WAITING_FOR_TOKEN,
-            MiningJobTokens, OutputSets, SOLO_FULL_EXTRANONCE_SIZE,
+            MiningJobTokens, OutputSets, Payout, SOLO_FULL_EXTRANONCE_SIZE,
         },
         config::{ConfigJDCMode, JobDeclaratorClientConfig, PoolConfig, ProtocolConfig},
         downstream::Downstream,
         error::Action,
         jd_mode::JDMode,
+        payout_distribution::PayoutDistribution,
     };
 
     const TEMPLATE_VALUE: u64 = 5_000_000_000;
@@ -742,17 +770,22 @@ mod tests {
     // What a channel manager under test sends each of its peers.
     struct Sent {
         pool: Receiver<OutboundFrame>,
-        jds: Receiver<JobDeclarationOwned>,
+        jds: SentToJds,
         tp: Receiver<TemplateDistributionOwned>,
+    }
+
+    // What a channel manager under test sends the JDS, without the TLV fields it appends.
+    struct SentToJds(Receiver<(JobDeclarationOwned, Option<Vec<Tlv>>)>);
+
+    impl SentToJds {
+        fn try_recv(&self) -> Result<JobDeclarationOwned, async_channel::TryRecvError> {
+            self.0.try_recv().map(|(message, _)| message)
+        }
     }
 
     // A coinbase-only channel manager from `channel_manager_in`. Returns it with what it sends
     // the Pool and what it sends the JDS.
-    async fn channel_manager() -> (
-        ChannelManager,
-        Receiver<OutboundFrame>,
-        Receiver<JobDeclarationOwned>,
-    ) {
+    async fn channel_manager() -> (ChannelManager, Receiver<OutboundFrame>, SentToJds) {
         let (manager, sent) = channel_manager_in(ConfigJDCMode::CoinbaseOnly).await;
         (manager, sent.pool, sent.jds)
     }
@@ -821,7 +854,7 @@ mod tests {
         .unwrap();
         let sent = Sent {
             pool: sent_to_pool,
-            jds: sent_to_jds,
+            jds: SentToJds(sent_to_jds),
             tp: sent_to_tp,
         };
         if mode == ConfigJDCMode::SoloMining {
@@ -1430,7 +1463,7 @@ mod tests {
         templates
     }
 
-    fn declarations_sent(receiver: &Receiver<JobDeclarationOwned>) -> usize {
+    fn declarations_sent(receiver: &SentToJds) -> usize {
         std::iter::from_fn(|| receiver.try_recv().ok())
             .filter(|message| matches!(message, JobDeclarationOwned::DeclareMiningJob(_)))
             .count()
@@ -2099,6 +2132,7 @@ mod tests {
                     request_id: 7,
                     template: oversized_template(2, false),
                     coinbase_outputs: outputs,
+                    distribution_id: None,
                     stage: CustomJobStage::Declared {
                         prev_hash: prev_hash(1),
                         transactions: Vec::new(),
@@ -2411,10 +2445,10 @@ mod tests {
         sets.update(outputs(3), room);
         sets.hand_out(5);
 
-        assert_eq!(sets.of(1).outputs, outputs(0));
-        assert_eq!(sets.of(3).outputs, outputs(1));
-        assert_eq!(sets.of(4).outputs, outputs(1));
-        assert_eq!(sets.of(5).outputs, outputs(3));
+        assert_eq!(sets.of(1).payout, Payout::Outputs(outputs(0)));
+        assert_eq!(sets.of(3).payout, Payout::Outputs(outputs(1)));
+        assert_eq!(sets.of(4).payout, Payout::Outputs(outputs(1)));
+        assert_eq!(sets.of(5).payout, Payout::Outputs(outputs(3)));
         assert_eq!(sets.of(5).serialized, payout_outputs(3));
         assert_eq!(sets.sets.len(), 3);
 
@@ -2422,6 +2456,71 @@ mod tests {
         assert_eq!(sets.sets.len(), 2);
         sets.on_chain_tip(5);
         assert_eq!(sets.sets.len(), 1);
+    }
+
+    // A payout distribution of the Coinbase Transaction Payouts extension paying 1 sat of weight
+    // to an `OP_TRUE` pool payout.
+    fn payout_distribution(distribution_id: u64) -> PayoutDistribution {
+        let pool_payout = TxOut {
+            value: Amount::from_sat(1),
+            script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
+        };
+        PayoutDistribution::try_from(SetPayoutDistributionOwned {
+            distribution_id,
+            pool_payout: consensus::serialize(&pool_payout).try_into().unwrap(),
+            payouts: Vec::new().try_into().unwrap(),
+            dust_limits: Vec::new().try_into().unwrap(),
+            additional_outputs: Vec::new().try_into().unwrap(),
+        })
+        .unwrap()
+    }
+
+    // A payout distribution waits for the next future template unless the templates JDC receives
+    // already reserve room for it, the first one included: before it, the Template Provider
+    // builds its templates under constraints JDC knows nothing of. The templates before keep the
+    // previous outputs. The Template Provider gets a distribution's constraints whenever they
+    // change, smaller ones included.
+    #[test]
+    fn payout_distributions_wait_for_a_future_template_reserving_their_room() {
+        let constraints = |size, sigops| CoinbaseOutputConstraintsOwned {
+            coinbase_output_max_additional_size: size,
+            coinbase_output_max_additional_sigops: sigops,
+        };
+        let distribution_of =
+            |sets: &OutputSets, template_id| sets.of(template_id).distribution_id();
+        let mut sets = OutputSets::new(parsed(&payout_outputs(0x00)));
+
+        assert_eq!(
+            sets.update_distribution(payout_distribution(1), constraints(10, 4)),
+            Some(constraints(10, 4))
+        );
+        sets.hand_out(1);
+        assert!(sets.of(1).miners_own);
+        sets.on_future_template();
+        sets.hand_out(2);
+        assert_eq!(distribution_of(&sets, 2), Some(DistributionId(1)));
+
+        assert_eq!(
+            sets.update_distribution(payout_distribution(2), constraints(20, 4)),
+            Some(constraints(20, 4))
+        );
+        sets.hand_out(3);
+        assert_eq!(distribution_of(&sets, 3), Some(DistributionId(1)));
+        assert_eq!(sets.latest_distribution_id(), Some(DistributionId(2)));
+        sets.on_future_template();
+        sets.hand_out(4);
+        assert_eq!(distribution_of(&sets, 4), Some(DistributionId(2)));
+
+        assert_eq!(
+            sets.update_distribution(payout_distribution(3), constraints(8, 4)),
+            Some(constraints(8, 4))
+        );
+        sets.hand_out(5);
+        assert_eq!(distribution_of(&sets, 5), Some(DistributionId(3)));
+        assert_eq!(
+            sets.update_distribution(payout_distribution(4), constraints(8, 4)),
+            None
+        );
     }
 
     // JDC asks the JDS for a token, and the JDS answers with `outputs`.
@@ -3097,7 +3196,7 @@ mod tests {
     }
 
     // The transactions of each answer sent to the JDS.
-    fn disclosures_sent(receiver: &Receiver<JobDeclarationOwned>) -> Vec<Vec<Vec<u8>>> {
+    fn disclosures_sent(receiver: &SentToJds) -> Vec<Vec<Vec<u8>>> {
         std::iter::from_fn(|| receiver.try_recv().ok())
             .filter_map(|message| match message {
                 JobDeclarationOwned::ProvideMissingTransactionsSuccess(answer) => Some(

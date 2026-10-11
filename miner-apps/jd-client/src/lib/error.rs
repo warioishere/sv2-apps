@@ -33,6 +33,7 @@ use stratum_apps::{
                 share_accounting::ShareValidationError,
             },
         },
+        extensions_sv2::PayoutComputationError,
         framing_sv2,
         handlers_sv2::HandlerErrorType,
         noise_sv2,
@@ -229,6 +230,9 @@ pub enum JDCErrorKind {
     AllocateMiningJobTokenSuccessCoinbaseOutputValue,
     /// `AllocateMiningJobToken.Success` hands out coinbase outputs too big for a job's coinbase.
     AllocateMiningJobTokenSuccessCoinbaseOutputsTooLarge,
+    /// `AllocateMiningJobToken.Success` hands out coinbase outputs while Coinbase Transaction
+    /// Payouts is negotiated, where they must be empty.
+    AllocateMiningJobTokenSuccessCoinbaseOutputsWithPayoutDistribution,
     /// Coinbase outputs need more room than `CoinbaseOutputConstraints` can reserve.
     CoinbaseOutputConstraints(CoinbaseOutputConstraintsError),
     /// Extranonce size is too large
@@ -255,6 +259,15 @@ pub enum JDCErrorKind {
     ServerRequiresUnsupportedExtensions(Vec<u16>),
     /// Client does not support required extensions
     ClientDoesNotSupportRequiredExtensions(Vec<u16>),
+    /// JDS negotiated Coinbase Transaction Payouts but the pool did not
+    CoinbaseTransactionPayoutsNotSupportedByPool,
+    /// JDS published a payout distribution that cannot be used: malformed outputs, outputs too
+    /// big for a job's coinbase, or a `distribution_id` that does not increase
+    InvalidPayoutDistribution,
+    /// The payout distribution cannot be applied to a template
+    PayoutComputation(PayoutComputationError),
+    /// Jobs built on the latest payout distribution keep being rejected as stale
+    StalePayoutDistribution,
     /// BitcoinCoreSv2TDP cancellation token activated
     BitcoinCoreSv2TDPCancellationTokenActivated,
     /// Failed to create BitcoinCoreSv2TDP tokio runtime
@@ -360,6 +373,12 @@ impl fmt::Display for JDCErrorKind {
                     "AllocateMiningJobToken.Success hands out no coinbase output"
                 )
             }
+            AllocateMiningJobTokenSuccessCoinbaseOutputsWithPayoutDistribution => {
+                write!(
+                    f,
+                    "AllocateMiningJobToken.Success hands out coinbase outputs under Coinbase Transaction Payouts"
+                )
+            }
             AllocateMiningJobTokenSuccessCoinbaseOutputsTooLarge => {
                 write!(
                     f,
@@ -428,6 +447,16 @@ impl fmt::Display for JDCErrorKind {
                     "Client does not support required extensions: {extensions:?}"
                 )
             }
+            CoinbaseTransactionPayoutsNotSupportedByPool => write!(
+                f,
+                "JDS negotiated Coinbase Transaction Payouts but the pool did not"
+            ),
+            InvalidPayoutDistribution => write!(f, "JDS published an invalid payout distribution"),
+            PayoutComputation(e) => write!(f, "Payout distribution cannot be applied: {e}"),
+            StalePayoutDistribution => write!(
+                f,
+                "Jobs built on the latest payout distribution keep being rejected as stale"
+            ),
             BitcoinCoreSv2TDPCancellationTokenActivated => {
                 write!(f, "BitcoinCoreSv2TDP cancellation token activated")
             }
@@ -465,6 +494,12 @@ impl fmt::Display for JDCErrorKind {
             InvalidCoinbaseOutput => write!(f, "Invalid coinbase output in config"),
             MonitoringServerError(e) => write!(f, "Failed to initialize monitoring tasks: `{e:?}`"),
         }
+    }
+}
+
+impl From<PayoutComputationError> for JDCErrorKind {
+    fn from(e: PayoutComputationError) -> Self {
+        JDCErrorKind::PayoutComputation(e)
     }
 }
 

@@ -45,7 +45,9 @@ use crate::{
         ChannelManager, ChannelManagerIo, SOLO_FULL_EXTRANONCE_SIZE, SharesOrderedByDiff,
     },
     error::{self, JDCError, JDCErrorKind},
-    utils::{add_share_to_cache, create_close_channel_msg, upstream_channel_update},
+    utils::{
+        add_share_to_cache, create_close_channel_msg, frame_with_tlvs, upstream_channel_update,
+    },
 };
 
 fn extranonce_allocation_error_code(
@@ -70,6 +72,8 @@ fn extranonce_allocation_error_code(
 /// a possible destination:
 ///
 /// - [`RouteMessageTo::Upstream`] → For messages intended for the upstream.
+/// - [`RouteMessageTo::UpstreamWithTlvs`] → For messages intended for the upstream, with TLV fields
+///   appended.
 /// - [`RouteMessageTo::JobDeclarator`] → For job declaration messages sent to the JDS.
 /// - [`RouteMessageTo::TemplateProvider`] → For template distribution messages sent to the template
 ///   provider.
@@ -79,6 +83,8 @@ fn extranonce_allocation_error_code(
 pub enum RouteMessageTo {
     /// Route to the upstream (mining) channel.
     Upstream(MiningOwned),
+    /// Route to the upstream (mining) channel with TLV fields appended.
+    UpstreamWithTlvs(MiningOwned, Vec<Tlv>),
     /// Route to the job declarator subsystem.
     JobDeclarator(JobDeclarationOwned),
     /// Route to the template provider subsystem.
@@ -126,6 +132,8 @@ impl RouteMessageTo {
     ///   client.
     /// - [`RouteMessageTo::Upstream`] → Forwards mining message upstream. In solo mode,
     ///   upstream-directed messages should not be produced.
+    /// - [`RouteMessageTo::UpstreamWithTlvs`] → Forwards mining message upstream with its TLV
+    ///   fields.
     /// - [`RouteMessageTo::JobDeclarator`] → Sends the job declaration message to the JDS.
     /// - [`RouteMessageTo::TemplateProvider`] → Sends the template distribution message to the
     ///   template provider.
@@ -145,8 +153,12 @@ impl RouteMessageTo {
                 let sv2_frame = OutboundFrame::from_message(AnyMessageOwned::Mining(message))?;
                 channel_manager_io.upstream_sender.send(sv2_frame).await?;
             }
+            RouteMessageTo::UpstreamWithTlvs(message, tlvs) => {
+                let sv2_frame = frame_with_tlvs(message, &tlvs)?;
+                channel_manager_io.upstream_sender.send(sv2_frame).await?;
+            }
             RouteMessageTo::JobDeclarator(message) => {
-                channel_manager_io.jd_sender.send(message).await?;
+                channel_manager_io.jd_sender.send((message, None)).await?;
             }
             RouteMessageTo::TemplateProvider(message) => {
                 channel_manager_io.tp_sender.send(message).await?;
