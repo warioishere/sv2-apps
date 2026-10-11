@@ -1,13 +1,16 @@
 use crate::utils::{create_downstream, create_upstream, message_from_frame, wait_for_client};
 use async_channel::Sender;
 use std::{convert::TryInto, net::SocketAddr, time::Duration};
-use stratum_apps::stratum_core::{
-    codec_sv2::MessageFrame,
-    common_messages_sv2::{
-        ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL, MESSAGE_TYPE_SETUP_CONNECTION, Protocol,
-        SetupConnectionErrorOwned, SetupConnectionOwned, SetupConnectionSuccessOwned,
+use stratum_apps::{
+    stratum_core::{
+        codec_sv2::MessageFrame,
+        common_messages_sv2::{
+            ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL, MESSAGE_TYPE_SETUP_CONNECTION,
+            Protocol, SetupConnectionErrorOwned, SetupConnectionOwned, SetupConnectionSuccessOwned,
+        },
+        parsers_sv2::{AnyMessageOwned, CommonMessagesOwned, IsSv2Message},
     },
-    parsers_sv2::{AnyMessageOwned, CommonMessagesOwned, IsSv2Message},
+    utils::types::OutboundFrame,
 };
 use tokio::net::TcpStream;
 use tracing::info;
@@ -102,10 +105,9 @@ impl MockDownstream {
 
         tokio::spawn(async move {
             while let Ok(message) = proxy_receiver.recv().await {
-                let message_type = message.message_type();
-                let frame = MessageFrame::from_message(message, message_type, 0, false)
+                let frame = OutboundFrame::from_message(message)
                     .expect("Failed to create frame from message");
-                if upstream_sender.send(frame.into()).await.is_err() {
+                if upstream_sender.send(frame).await.is_err() {
                     break;
                 }
             }
@@ -236,10 +238,9 @@ impl MockUpstream {
             });
 
             while let Ok(message) = proxy_receiver.recv().await {
-                let message_type = message.message_type();
-                let frame = MessageFrame::from_message(message, message_type, 0, false)
+                let frame = OutboundFrame::from_message(message)
                     .expect("Failed to create frame from message");
-                if downstream_sender.send(frame.into()).await.is_err() {
+                if downstream_sender.send(frame).await.is_err() {
                     break;
                 }
             }
