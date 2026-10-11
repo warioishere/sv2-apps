@@ -1,10 +1,7 @@
 use stratum_apps::{
     stratum_core::{
         binary_sv2::{B016MOwned, Seq064KOwned},
-        bitcoin::{
-            self, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness,
-            absolute::LockTime, transaction::Version,
-        },
+        bitcoin::{self, TxOut},
         channels_sv2::outputs::deserialize_outputs,
         handlers_sv2::HandleJobDeclarationMessagesFromServerOwnedAsync,
         job_declaration_sv2::{
@@ -12,10 +9,7 @@ use stratum_apps::{
             DeclareMiningJobSuccessOwned, ERROR_CODE_DECLARE_MINING_JOB_STALE_CHAIN_TIP,
             ProvideMissingTransactionsOwned, ProvideMissingTransactionsSuccessOwned,
         },
-        parsers_sv2::{
-            AnyMessageOwned, JobDeclarationOwned, MiningOwned, TemplateDistributionOwned, Tlv,
-        },
-        template_distribution_sv2::CoinbaseOutputConstraintsOwned,
+        parsers_sv2::{AnyMessageOwned, JobDeclarationOwned, MiningOwned, Tlv},
     },
     utils::types::OutboundFrame,
 };
@@ -75,46 +69,8 @@ impl HandleJobDeclarationMessagesFromServerOwnedAsync for ChannelManager {
                 bitcoin::consensus::deserialize(msg.coinbase_outputs.as_bytes())
                     .map_err(JDCError::shutdown)?;
 
-            let max_additional_size: usize = deserialized_jds_coinbase_outputs
-                .iter()
-                .map(|o| o.size())
-                .sum();
-
-            // create a dummy coinbase transaction with the empty output
-            // this is used to calculate the sigops of the coinbase output
-            let dummy_coinbase = Transaction {
-                version: Version::TWO,
-                lock_time: LockTime::ZERO,
-                input: vec![TxIn {
-                    previous_output: OutPoint::null(),
-                    script_sig: ScriptBuf::new(),
-                    sequence: Sequence::MAX,
-                    witness: Witness::from(vec![vec![0; 32]]),
-                }],
-                output: deserialized_jds_coinbase_outputs,
-            };
-
-            let max_additional_sigops = dummy_coinbase.total_sigop_cost(|_| None) as u16;
-
-            debug!(
-                max_additional_size,
-                max_additional_sigops, "Computed coinbase output constraints"
-            );
-
-            let coinbase_output_constraints_message =
-                TemplateDistributionOwned::CoinbaseOutputConstraints(
-                    CoinbaseOutputConstraintsOwned {
-                        coinbase_output_max_additional_size: max_additional_size as u32,
-                        coinbase_output_max_additional_sigops: max_additional_sigops,
-                    },
-                );
-
-            self.channel_manager_io
-                .tp_sender
-                .send(coinbase_output_constraints_message)
-                .await
-                .map_err(|_e| JDCError::shutdown(JDCErrorKind::ChannelErrorSender))?;
-
+            self.coinbase_output_constraints(deserialized_jds_coinbase_outputs)
+                .await?;
             info!("Sent updated CoinbaseOutputConstraints to TP channel");
         } else {
             debug!("Coinbase outputs unchanged, skipping constraints update");
