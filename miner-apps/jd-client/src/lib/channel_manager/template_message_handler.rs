@@ -510,21 +510,22 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
         let mut token_consumed = false;
 
         if self.mode.is_coinbase_only() && future_template.is_some() {
-            if let Some(token) = self
-                .allocate_tokens
-                .with(|tokens| tokens.pop_front())
-                .map_err(JDCError::shutdown)?
-            {
-                let upstream_info = self
-                    .upstream_channel
-                    .with(|channel| {
-                        channel.as_ref().map(|channel| {
-                            (channel.get_channel_id(), channel.get_full_extranonce_size())
-                        })
+            // a token is only taken once there is an upstream channel to spend it on
+            let upstream_info = self
+                .upstream_channel
+                .with(|channel| {
+                    channel.as_ref().map(|channel| {
+                        (channel.get_channel_id(), channel.get_full_extranonce_size())
                     })
-                    .map_err(JDCError::shutdown)?;
+                })
+                .map_err(JDCError::shutdown)?;
 
-                if let Some((upstream_channel_id, full_extranonce_size)) = upstream_info {
+            if let Some((upstream_channel_id, full_extranonce_size)) = upstream_info {
+                if let Some(token) = self
+                    .allocate_tokens
+                    .with(|tokens| tokens.pop_front())
+                    .map_err(JDCError::shutdown)?
+                {
                     token_consumed = true;
                     let template = future_template
                         .clone()

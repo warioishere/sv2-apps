@@ -12,7 +12,9 @@ use stratum_apps::{
         bitcoin::{Amount, TxOut, consensus::serialize},
         channels_sv2::outputs::deserialize_outputs,
         common_messages_sv2::Protocol,
-        job_declaration_sv2::AllocateMiningJobTokenSuccessOwned,
+        job_declaration_sv2::{
+            AllocateMiningJobTokenSuccessOwned, MESSAGE_TYPE_ALLOCATE_MINING_JOB_TOKEN_SUCCESS,
+        },
         mining_sv2::{
             MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL_SUCCESS, OpenExtendedMiningChannelOwned,
             OpenExtendedMiningChannelSuccessOwned,
@@ -62,6 +64,20 @@ fn future_template(template_id: u64) -> NewTemplateOwned {
 /// assign the template revenue to it before building the job.
 #[tokio::test]
 async fn jdc_coinbase_only_sends_custom_job_on_chain_tip_update() {
+    custom_job_on_chain_tip_update(1).await;
+}
+
+/// A chain tip update before the upstream channel is open has no job to spend a token on, so it
+/// must leave JDC's tokens alone: JDC holds two, and two such updates must still leave it able to
+/// put a custom job on the next tip.
+#[tokio::test]
+async fn jdc_coinbase_only_keeps_its_tokens_until_the_upstream_channel_opens() {
+    custom_job_on_chain_tip_update(2).await;
+}
+
+// Hands JDC two tokens, moves the chain tip `tip_updates_before_open` times before a downstream
+// opens the upstream channel, moves it once more, and checks the custom job JDC sends for it.
+async fn custom_job_on_chain_tip_update(tip_updates_before_open: u8) {
     integration_tests_sv2::start_tracing();
 
     let mock_tp_addr = get_available_address();
@@ -143,24 +159,37 @@ async fn jdc_coinbase_only_sends_custom_job_on_chain_tip_update() {
             .expect("mock JDS should send the token");
     }
 
-    mock_tp_sender
-        .send(AnyMessageOwned::TemplateDistribution(
-            TemplateDistributionOwned::NewTemplate(future_template(1)),
-        ))
-        .await
-        .expect("mock TP should send NewTemplate");
-    mock_tp_sender
-        .send(AnyMessageOwned::TemplateDistribution(
-            TemplateDistributionOwned::SetNewPrevHash(SetNewPrevHashOwned {
-                template_id: 1,
-                prev_hash: [0x11; 32].into(),
-                ntime_start: 1_700_000_000,
-                n_bits: 0x1d00ffff,
-                target: [0xff; 32].into(),
-            }),
-        ))
-        .await
-        .expect("mock TP should send SetNewPrevHash");
+    // the chain tip may only move once JDC holds both tokens, or it has none to lose
+    for _ in 0..2 {
+        jds_sniffer
+            .wait_for_message_type_and_clean_queue(
+                MessageDirection::ToDownstream,
+                MESSAGE_TYPE_ALLOCATE_MINING_JOB_TOKEN_SUCCESS,
+            )
+            .await;
+    }
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    for template_id in 1..=tip_updates_before_open as u64 {
+        mock_tp_sender
+            .send(AnyMessageOwned::TemplateDistribution(
+                TemplateDistributionOwned::NewTemplate(future_template(template_id)),
+            ))
+            .await
+            .expect("mock TP should send NewTemplate");
+        mock_tp_sender
+            .send(AnyMessageOwned::TemplateDistribution(
+                TemplateDistributionOwned::SetNewPrevHash(SetNewPrevHashOwned {
+                    template_id,
+                    prev_hash: [0x10 + template_id as u8; 32].into(),
+                    ntime_start: 1_700_000_000 + template_id as u32,
+                    n_bits: 0x1d00ffff,
+                    target: [0xff; 32].into(),
+                }),
+            ))
+            .await
+            .expect("mock TP should send SetNewPrevHash");
+    }
 
     let (downstream_sniffer, downstream_sniffer_addr) =
         integration_tests_sv2::start_sniffer("downstream-jdc", jdc_addr, false, vec![], None);
@@ -217,17 +246,18 @@ async fn jdc_coinbase_only_sends_custom_job_on_chain_tip_update() {
         .await;
 
     // the chain tip moves: a new future template, then the prev hash that activates it
-    let new_prev_hash = [0x22; 32];
+    let new_prev_hash = [0xee; 32];
+    let template_id = tip_updates_before_open as u64 + 1;
     mock_tp_sender
         .send(AnyMessageOwned::TemplateDistribution(
-            TemplateDistributionOwned::NewTemplate(future_template(2)),
+            TemplateDistributionOwned::NewTemplate(future_template(template_id)),
         ))
         .await
         .expect("mock TP should send NewTemplate");
     mock_tp_sender
         .send(AnyMessageOwned::TemplateDistribution(
             TemplateDistributionOwned::SetNewPrevHash(SetNewPrevHashOwned {
-                template_id: 2,
+                template_id,
                 prev_hash: new_prev_hash.into(),
                 ntime_start: 1_700_000_600,
                 n_bits: 0x1d00ffff,
