@@ -9,8 +9,8 @@ use stratum_apps::stratum_core::{
 };
 
 use stratum_apps::stratum_core::{
-    bitcoin::{Amount, Transaction, consensus, hashes::Hash},
-    channels_sv2::{chain_tip::ChainTip, outputs::deserialize_outputs},
+    bitcoin::{Transaction, consensus, hashes::Hash},
+    channels_sv2::chain_tip::ChainTip,
     handlers_sv2::HandleTemplateDistributionMessagesFromServerOwnedAsync,
     mining_sv2::SetNewPrevHashOwned as SetNewPrevHashMp,
     parsers_sv2::Tlv,
@@ -52,11 +52,7 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
                 .map_err(JDCError::shutdown)?;
         }
 
-        let mut coinbase_outputs = deserialize_outputs(
-            self.coinbase_outputs.get().map_err(JDCError::shutdown)?,
-        )
-        .map_err(|_| JDCError::shutdown(JDCErrorKind::ChannelManagerHasBadCoinbaseOutputs))?;
-        coinbase_outputs[0].value = Amount::from_sat(msg.coinbase_tx_value_remaining);
+        let coinbase_outputs = self.coinbase_outputs_for_template(&msg)?;
 
         // Only request transaction data when the response can be consumed: building a
         // `DeclareMiningJob` requires the upstream channel and job factory, which only
@@ -328,11 +324,6 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
         let transactions_data = msg.transaction_list;
         let excess_data = msg.excess_data;
 
-        let mut deserialized_outputs = deserialize_outputs(
-            self.coinbase_outputs.get().map_err(JDCError::shutdown)?,
-        )
-        .map_err(|_| JDCError::shutdown(JDCErrorKind::ChannelManagerHasBadCoinbaseOutputs))?;
-
         let token = self
             .allocate_tokens
             .with(|tokens| tokens.pop_front())
@@ -362,8 +353,7 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
         };
 
         let mining_token = token.mining_job_token.clone();
-        deserialized_outputs[0].value =
-            Amount::from_sat(template_message.coinbase_tx_value_remaining);
+        let deserialized_outputs = self.coinbase_outputs_for_template(&template_message)?;
         let reserialized_outputs = consensus::serialize(&deserialized_outputs);
 
         let tx_list: Vec<Transaction> = transactions_data
@@ -471,9 +461,6 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
     ) -> Result<(), Self::Error> {
         info!("Received: {}", msg);
 
-        let outputs = deserialize_outputs(self.coinbase_outputs.get().map_err(JDCError::shutdown)?)
-            .map_err(|_| JDCError::shutdown(JDCErrorKind::ChannelManagerHasBadCoinbaseOutputs))?;
-
         self.cached_shares.clear();
 
         self.upstream_channel
@@ -542,6 +529,7 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
                     let template = future_template
                         .clone()
                         .expect("future_template checked above");
+                    let outputs = self.coinbase_outputs_for_template(&template)?;
                     let request_id = self.request_id_factory.fetch_add(1, Ordering::Relaxed);
                     let chain_tip =
                         ChainTip::new(msg.prev_hash.clone(), msg.n_bits, msg.ntime_start);
@@ -557,7 +545,7 @@ impl HandleTemplateDistributionMessagesFromServerOwnedAsync for ChannelManager {
                                 token.mining_job_token,
                                 chain_tip,
                                 template.clone(),
-                                outputs.clone(),
+                                outputs,
                                 full_extranonce_size,
                             )
                         })
