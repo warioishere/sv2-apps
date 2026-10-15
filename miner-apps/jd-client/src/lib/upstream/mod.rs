@@ -11,7 +11,8 @@
 
 use std::{net::SocketAddr, sync::Arc};
 use stratum_apps::stratum_core::{
-    binary_sv2::Seq064KOwned, extensions_sv2::RequestExtensionsOwned,
+    binary_sv2::Seq064KOwned,
+    extensions_sv2::{EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS, RequestExtensionsOwned},
 };
 
 use async_channel::{Receiver, Sender, unbounded};
@@ -72,8 +73,9 @@ impl UpstreamIo {
 pub struct Upstream {
     /// Messaging channels to/from the channel manager and Upstream.
     upstream_io: UpstreamIo,
-    /// Protocol extensions that the JDC requires
-    required_extensions: Vec<u16>,
+    /// Protocol extensions that the JDC requests from the pool: the required ones, plus Coinbase
+    /// Transaction Payouts when the upstream entry enables it.
+    requested_extensions: Vec<u16>,
     /// Upstream address
     address: SocketAddr,
 }
@@ -208,9 +210,15 @@ impl Upstream {
             upstream_sender: outbound_tx,
             upstream_receiver: inbound_rx,
         };
+        let mut requested_extensions = required_extensions;
+        if upstream_entry.coinbase_transaction_payouts
+            && !requested_extensions.contains(&EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS)
+        {
+            requested_extensions.push(EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS);
+        }
         Ok(Upstream {
             upstream_io,
-            required_extensions,
+            requested_extensions,
             address: addr,
         })
     }
@@ -272,8 +280,9 @@ impl Upstream {
         self.handle_common_message_frame_from_server(None, header, incoming.payload())
             .await?;
 
-        // Send RequestExtensions after successful SetupConnection if there are required extensions
-        if !self.required_extensions.is_empty() {
+        // Send RequestExtensions after successful SetupConnection if there are extensions to
+        // request
+        if !self.requested_extensions.is_empty() {
             self.send_request_extensions().await?;
         }
 
@@ -285,15 +294,15 @@ impl Upstream {
     /// extensions.
     async fn send_request_extensions(&mut self) -> JDCResult<(), error::Upstream> {
         info!(
-            "Sending RequestExtensions to upstream with required extensions: {:?}",
-            self.required_extensions
+            "Sending RequestExtensions to upstream with requested extensions: {:?}",
+            self.requested_extensions
         );
-        if self.required_extensions.is_empty() {
+        if self.requested_extensions.is_empty() {
             return Ok(());
         }
 
         let requested_extensions =
-            Seq064KOwned::new(self.required_extensions.clone()).map_err(JDCError::shutdown)?;
+            Seq064KOwned::new(self.requested_extensions.clone()).map_err(JDCError::shutdown)?;
 
         let request_extensions = RequestExtensionsOwned {
             request_id: 0,
@@ -301,8 +310,8 @@ impl Upstream {
         };
 
         info!(
-            "Sending RequestExtensions to upstream with required extensions: {:?}",
-            self.required_extensions
+            "Sending RequestExtensions to upstream with requested extensions: {:?}",
+            self.requested_extensions
         );
 
         let sv2_frame =
@@ -513,7 +522,7 @@ mod tests {
                 upstream_sender,
                 upstream_receiver,
             },
-            required_extensions: vec![],
+            requested_extensions: vec![],
             address: "127.0.0.1:1234".parse().expect("valid socket address"),
         };
 

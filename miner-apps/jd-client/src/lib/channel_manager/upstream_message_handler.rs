@@ -14,9 +14,9 @@ use stratum_apps::{
         channels_sv2::{
             client::{error::ExtendedChannelError, extended::ExtendedChannel},
             extranonce_manager::{ExtranonceAllocator, ExtranoncePrefix, MAX_EXTRANONCE_LEN},
-            outputs::deserialize_outputs,
             server::jobs::factory::JobFactory,
         },
+        extensions_sv2::ERROR_CODE_STALE_PAYOUT_DISTRIBUTION,
         handlers_sv2::{
             HandleMiningMessagesFromClientOwnedAsync, HandleMiningMessagesFromServerOwnedAsync,
             SupportedChannelTypes,
@@ -30,7 +30,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     channel_manager::{
-        ChannelManager, DeclaredJob, JDC_LOCAL_PREFIX_BYTES, JDC_MAX_CHANNELS,
+        ChannelManager, DeclaredJob, JDC_LOCAL_PREFIX_BYTES, JDC_MAX_CHANNELS, JobCoinbaseOutputs,
         downstream_message_handler::RouteMessageTo,
     },
     error::{self, JDCError, JDCErrorKind},
@@ -98,11 +98,6 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         info!("Received: {}", msg);
-
-        let coinbase_outputs = self.coinbase_outputs.get().map_err(JDCError::shutdown)?;
-
-        let outputs = deserialize_outputs(coinbase_outputs)
-            .map_err(|_| JDCError::shutdown(JDCErrorKind::DeclaredJobHasBadCoinbaseOutputs))?;
 
         let reserved_downstream_rollable = self.reserved_downstream_rollable_extranonce_size;
         let min_extranonce_size =
@@ -224,6 +219,10 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                 let prevhash = last_new_prev_hash.expect("checked above");
                 let request_id = self.request_id_factory.fetch_add(1, Ordering::Relaxed);
                 let full_extranonce_size = extended_channel.get_full_extranonce_size();
+                let JobCoinbaseOutputs {
+                    outputs,
+                    distribution_id,
+                } = self.coinbase_outputs_for_template(&template)?;
 
                 if let Ok(custom_job) = job_factory.new_custom_job(
                     extended_channel.get_channel_id(),
@@ -246,9 +245,13 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                                 .get()
                                 .map_err(JDCError::shutdown)?,
                             tx_list: vec![],
+                            distribution_id,
                         },
                     );
-                    Some(custom_job)
+                    Some(ChannelManager::custom_job_route(
+                        custom_job,
+                        distribution_id,
+                    )?)
                 } else {
                     None
                 }
@@ -297,14 +300,9 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
             }
 
             if self.mode.is_coinbase_only() {
-                if let Some(custom_job) = set_custom_job {
-                    let set_custom_job = MiningOwned::SetCustomMiningJob(custom_job);
-                    let sv2_frame =
-                        OutboundFrame::from_message(AnyMessageOwned::Mining(set_custom_job))
-                            .map_err(JDCError::shutdown)?;
-                    self.channel_manager_io
-                        .upstream_sender
-                        .send(sv2_frame)
+                if let Some(custom_job_route) = set_custom_job {
+                    custom_job_route
+                        .forward(&self.channel_manager_io)
                         .await
                         .map_err(|_e| JDCError::fallback(JDCErrorKind::ChannelErrorSender))?;
                     _ = self.allocate_tokens(1).await;
@@ -635,6 +633,8 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         info!("Received: {} ✅", msg);
+        self.stale_payout_distribution_rejections
+            .store(0, Ordering::Relaxed);
 
         let mut shares_to_submit_upstream = Vec::new();
 
@@ -743,6 +743,13 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                     .remove(&declared_job.template.template_id);
             }
             return Ok(());
+        }
+        if error_code == ERROR_CODE_STALE_PAYOUT_DISTRIBUTION {
+            warn!(
+                "Received non-fatal SetCustomMiningJobError from upstream: stale-payout-distribution (request_id={})",
+                msg.request_id
+            );
+            return self.on_stale_payout_distribution(msg.request_id);
         }
 
         warn!(

@@ -49,7 +49,7 @@ const SHARES_PER_MINUTE: f32 = 120.0;
 
 pub const POOL_COINBASE_REWARD_ADDRESS: &str = "tb1qa0sm0hxzj0x25rh8gw5xlzwlsfvvyz8u96w3p8";
 const POOL_COINBASE_REWARD_DESCRIPTOR: &str = "addr(tb1qa0sm0hxzj0x25rh8gw5xlzwlsfvvyz8u96w3p8)";
-const JDC_COINBASE_REWARD_DESCRIPTOR: &str = "addr(tb1qpusf5256yxv50qt0pm0tue8k952fsu5lzsphft)";
+pub const JDC_COINBASE_REWARD_DESCRIPTOR: &str = "addr(tb1qpusf5256yxv50qt0pm0tue8k952fsu5lzsphft)";
 
 static LOGGER: OnceCell<()> = OnceCell::new();
 
@@ -240,18 +240,7 @@ pub fn start_jdc_with_user_identities(
     enable_monitoring: bool,
     jdc_mode: Option<ConfigJDCMode>,
 ) -> (JobDeclaratorClient, SocketAddr, Option<SocketAddr>) {
-    use jd_client_sv2::config::{JobDeclaratorClientConfig, PoolConfig, ProtocolConfig, Upstream};
-    let jdc_address = get_available_address();
-    let authority_public_key = Secp256k1PublicKey::try_from(
-        "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72".to_string(),
-    )
-    .unwrap();
-    let authority_secret_key = Secp256k1SecretKey::try_from(
-        "mkDLTBBRxdBv998612qipDYoTK3YUrqLe8uWw7gu3iXbSrn2n".to_string(),
-    )
-    .unwrap();
-    let coinbase_reward_script =
-        CoinbaseRewardScript::from_descriptor(JDC_COINBASE_REWARD_DESCRIPTOR).unwrap();
+    use jd_client_sv2::config::Upstream;
     let authority_pubkey = Secp256k1PublicKey::try_from(
         "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72".to_string(),
     )
@@ -269,6 +258,38 @@ pub fn start_jdc_with_user_identities(
             )
         })
         .collect();
+    start_jdc_with_upstreams(
+        upstreams,
+        template_provider_config,
+        supported_extensions,
+        required_extensions,
+        enable_monitoring,
+        jdc_mode,
+    )
+}
+
+/// Starts a JDC with fully specified upstream entries, for tests that need per-upstream settings
+/// beyond the addresses and user identity.
+pub fn start_jdc_with_upstreams(
+    upstreams: Vec<jd_client_sv2::config::Upstream>,
+    template_provider_config: TemplateProviderType,
+    supported_extensions: Vec<u16>,
+    required_extensions: Vec<u16>,
+    enable_monitoring: bool,
+    jdc_mode: Option<ConfigJDCMode>,
+) -> (JobDeclaratorClient, SocketAddr, Option<SocketAddr>) {
+    use jd_client_sv2::config::{JobDeclaratorClientConfig, PoolConfig, ProtocolConfig};
+    let jdc_address = get_available_address();
+    let authority_public_key = Secp256k1PublicKey::try_from(
+        "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72".to_string(),
+    )
+    .unwrap();
+    let authority_secret_key = Secp256k1SecretKey::try_from(
+        "mkDLTBBRxdBv998612qipDYoTK3YUrqLe8uWw7gu3iXbSrn2n".to_string(),
+    )
+    .unwrap();
+    let coinbase_reward_script =
+        CoinbaseRewardScript::from_descriptor(JDC_COINBASE_REWARD_DESCRIPTOR).unwrap();
     let pool_config = PoolConfig::new(authority_public_key, authority_secret_key);
     let protocol_config = ProtocolConfig::new(2, 2, coinbase_reward_script);
     let monitoring_address = if enable_monitoring {

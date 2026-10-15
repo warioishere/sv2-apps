@@ -113,6 +113,12 @@ separate operator: the account you hold at your primary pool is not the account 
 backup. It is mandatory, and JDC exits with an error if any entry omits it. Solo mining mode has no
 upstreams (`upstreams = []`) and therefore no `user_identity`.
 
+Set `coinbase_transaction_payouts = true` on an entry whose pool supports the Coinbase Transaction
+Payouts extension (0x0003). JDC then negotiates the extension with that Pool and JDS, and the
+coinbase of every job declared there pays the pool's payout distribution directly instead of a
+single pool output. It is off by default: a JDS that does not implement extension negotiation never
+answers the request.
+
 ### Miner Telemetry
 
 JDC can enrich the monitoring API with telemetry from SV2 ASIC miners that connect directly to JDC.

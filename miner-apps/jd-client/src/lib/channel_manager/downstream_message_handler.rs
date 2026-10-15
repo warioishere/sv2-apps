@@ -14,11 +14,10 @@ use stratum_apps::stratum_core::{
 use stratum_apps::{
     stratum_core::{
         binary_sv2::Str0255,
-        bitcoin::{Amount, Target, hashes::sha256d},
+        bitcoin::{Target, hashes::sha256d},
         channels_sv2::{
             Vardiff, VardiffState, client,
             extranonce_manager::ExtranonceAllocatorError,
-            outputs::deserialize_outputs,
             server::{
                 error::{ExtendedChannelError, StandardChannelError},
                 extended::ExtendedChannel,
@@ -46,7 +45,7 @@ use crate::{
         ChannelManager, ChannelManagerIo, SOLO_FULL_EXTRANONCE_SIZE, SharesOrderedByDiff,
     },
     error::{self, JDCError, JDCErrorKind},
-    utils::{add_share_to_cache, create_close_channel_msg},
+    utils::{add_share_to_cache, create_close_channel_msg, frame_with_tlvs},
 };
 
 fn extranonce_allocation_error_code(
@@ -80,6 +79,8 @@ fn extranonce_allocation_error_code(
 pub enum RouteMessageTo {
     /// Route to the upstream (mining) channel.
     Upstream(MiningOwned),
+    /// Route to the upstream (mining) channel with TLV fields appended.
+    UpstreamWithTlvs(MiningOwned, Vec<Tlv>),
     /// Route to the job declarator subsystem.
     JobDeclarator(JobDeclarationOwned),
     /// Route to the template provider subsystem.
@@ -146,8 +147,12 @@ impl RouteMessageTo {
                 let sv2_frame = OutboundFrame::from_message(AnyMessageOwned::Mining(message))?;
                 channel_manager_io.upstream_sender.send(sv2_frame).await?;
             }
+            RouteMessageTo::UpstreamWithTlvs(message, tlvs) => {
+                let sv2_frame = frame_with_tlvs(message, &tlvs)?;
+                channel_manager_io.upstream_sender.send(sv2_frame).await?;
+            }
             RouteMessageTo::JobDeclarator(message) => {
-                channel_manager_io.jd_sender.send(message).await?;
+                channel_manager_io.jd_sender.send((message, None)).await?;
             }
             RouteMessageTo::TemplateProvider(message) => {
                 channel_manager_io.tp_sender.send(message).await?;
@@ -248,11 +253,6 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
         let downstream_id =
             client_id.expect("client_id must be present for downstream_id extraction");
 
-        let coinbase_outputs = self.coinbase_outputs.get().map_err(JDCError::shutdown)?;
-
-        let mut coinbase_outputs = deserialize_outputs(coinbase_outputs)
-            .map_err(|_| JDCError::shutdown(JDCErrorKind::ChannelManagerHasBadCoinbaseOutputs))?;
-
         info!(downstream_id, "Received: {}", msg);
 
         let build_error = |code: &str| {
@@ -283,8 +283,9 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
             ));
         };
 
-        coinbase_outputs[0].value =
-            Amount::from_sat(last_future_template.coinbase_tx_value_remaining);
+        let coinbase_outputs = self
+            .coinbase_outputs_for_template(&last_future_template)?
+            .outputs;
         let nominal_hash_rate = msg.nominal_hash_rate;
         let requested_max_target = Target::from_le_bytes(msg.max_target.to_array());
         let pool_tag_string = self.pool_tag_string.get().map_err(JDCError::shutdown)?;
@@ -621,13 +622,9 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                         .into(),
                 );
 
-                let mut coinbase_outputs =
-                    deserialize_outputs(self.coinbase_outputs.get().map_err(JDCError::shutdown)?)
-                        .map_err(|_| {
-                            JDCError::shutdown(JDCErrorKind::ChannelManagerHasBadCoinbaseOutputs)
-                        })?;
-                coinbase_outputs[0].value =
-                    Amount::from_sat(last_future_template.coinbase_tx_value_remaining);
+                let coinbase_outputs = self
+                    .coinbase_outputs_for_template(&last_future_template)?
+                    .outputs;
                 extended_channel
                     .on_new_template(last_future_template.clone(), coinbase_outputs)
                     .map_err(|e| {
