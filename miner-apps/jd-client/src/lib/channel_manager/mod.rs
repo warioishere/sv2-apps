@@ -527,23 +527,13 @@ impl ChannelManager {
             }
         };
 
-        let coinbase_outputs = match self.coinbase_outputs.get() {
+        let coinbase_outputs = match self.coinbase_outputs_for_template(&last_future_template) {
             Ok(outputs) => outputs,
             Err(e) => {
-                error!(error = ?JDCErrorKind::from(e), "Failed to access channel manager state");
+                error!(error = ?e.kind, "Failed to build coinbase outputs");
                 return None;
             }
         };
-        let mut coinbase_outputs = match deserialize_outputs(coinbase_outputs) {
-            Ok(outputs) => outputs,
-            Err(e) => {
-                error!(error = ?e, "Failed to deserialize coinbase outputs");
-                return None;
-            }
-        };
-
-        coinbase_outputs[0].value =
-            Amount::from_sat(last_future_template.coinbase_tx_value_remaining);
 
         if let Err(e) =
             group_channel.on_new_template(last_future_template, coinbase_outputs.clone())
@@ -1453,6 +1443,24 @@ impl ChannelManager {
                 downstream_id,
             )),
         }
+    }
+
+    /// Returns the coinbase outputs JDC adds to a coinbase built from `template`.
+    ///
+    /// The outputs come from the latest `AllocateMiningJobToken.Success`, where the pool payout
+    /// output carries a value of 0. The template revenue is assigned to it here, because every
+    /// job built from these outputs must spend exactly `coinbase_tx_value_remaining`.
+    #[allow(clippy::result_large_err)]
+    pub(crate) fn coinbase_outputs_for_template(
+        &self,
+        template: &NewTemplateOwned,
+    ) -> JDCResult<Vec<TxOut>, error::ChannelManager> {
+        let mut coinbase_outputs = deserialize_outputs(
+            self.coinbase_outputs.get().map_err(JDCError::shutdown)?,
+        )
+        .map_err(|_| JDCError::shutdown(JDCErrorKind::ChannelManagerHasBadCoinbaseOutputs))?;
+        coinbase_outputs[0].value = Amount::from_sat(template.coinbase_tx_value_remaining);
+        Ok(coinbase_outputs)
     }
 
     /// Sends a CoinbaseOutputConstraints message to the template provider.

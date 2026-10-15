@@ -14,7 +14,6 @@ use stratum_apps::{
         channels_sv2::{
             client::{error::ExtendedChannelError, extended::ExtendedChannel},
             extranonce_manager::{ExtranonceAllocator, ExtranoncePrefix, MAX_EXTRANONCE_LEN},
-            outputs::deserialize_outputs,
             server::jobs::factory::JobFactory,
         },
         handlers_sv2::{
@@ -98,11 +97,6 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         info!("Received: {}", msg);
-
-        let coinbase_outputs = self.coinbase_outputs.get().map_err(JDCError::shutdown)?;
-
-        let outputs = deserialize_outputs(coinbase_outputs)
-            .map_err(|_| JDCError::shutdown(JDCErrorKind::DeclaredJobHasBadCoinbaseOutputs))?;
 
         let reserved_downstream_rollable = self.reserved_downstream_rollable_extranonce_size;
         let min_extranonce_size =
@@ -224,6 +218,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                 let prevhash = last_new_prev_hash.expect("checked above");
                 let request_id = self.request_id_factory.fetch_add(1, Ordering::Relaxed);
                 let full_extranonce_size = extended_channel.get_full_extranonce_size();
+                let outputs = self.coinbase_outputs_for_template(&template)?;
 
                 if let Ok(custom_job) = job_factory.new_custom_job(
                     extended_channel.get_channel_id(),
