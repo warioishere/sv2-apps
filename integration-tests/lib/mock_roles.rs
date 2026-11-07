@@ -126,10 +126,9 @@ impl MockDownstream {
 
         tokio::spawn(async move {
             while let Ok(message) = proxy_receiver.recv().await {
-                let message_type = message.message_type();
-                let frame = MessageFrame::from_message(message, message_type, 0, false)
+                let frame = OutboundFrame::from_message(message)
                     .expect("Failed to create frame from message");
-                if upstream_sender.send(frame.into()).await.is_err() {
+                if upstream_sender.send(frame).await.is_err() {
                     break;
                 }
             }
@@ -260,10 +259,9 @@ impl MockUpstream {
             });
 
             while let Ok(message) = proxy_receiver.recv().await {
-                let message_type = message.message_type();
-                let frame = MessageFrame::from_message(message, message_type, 0, false)
+                let frame = OutboundFrame::from_message(message)
                     .expect("Failed to create frame from message");
-                if downstream_sender.send(frame.into()).await.is_err() {
+                if downstream_sender.send(frame).await.is_err() {
                     break;
                 }
             }

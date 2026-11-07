@@ -5,6 +5,7 @@ use stratum_apps::{
     stratum_core::{
         binary_sv2::{B016MOwned, Seq064KOwned},
         bitcoin::{self, Amount, ScriptBuf, TxOut},
+        extensions_sv2::ERROR_CODE_STALE_PAYOUT_DISTRIBUTION,
         handlers_sv2::HandleJobDeclarationMessagesFromServerOwnedAsync,
         job_declaration_sv2::{
             AllocateMiningJobTokenSuccessOwned, DeclareMiningJobErrorOwned,
@@ -49,6 +50,10 @@ impl HandleJobDeclarationMessagesFromServerOwnedAsync for ChannelManager {
     // - grows the room the Template Provider reserves if the outputs need more, sending it
     //   `CoinbaseOutputConstraints` for that room;
     // - hands the token to work waiting for one.
+    //
+    // With the Coinbase Transaction Payouts extension negotiated, the answer carries no coinbase
+    // outputs (ext 0x0003, `Negotiation`): the outputs and their room come from the payout
+    // distribution (see `on_payout_distribution`), and only the token is queued.
     async fn handle_allocate_mining_job_token_success(
         &mut self,
         _server_id: Option<usize>,
@@ -71,18 +76,29 @@ impl HandleJobDeclarationMessagesFromServerOwnedAsync for ChannelManager {
             return Ok(());
         }
 
-        // Everything about the answer that can fail is checked before any of it is kept, so
-        // outputs JDC can't use leave its outputs, tokens and constraints as they were, and JDC
-        // falls back from the JDS that handed them out.
-        let (new_coinbase_outputs, constraints) =
-            usable_coinbase_outputs(msg.coinbase_outputs.as_bytes()).map_err(JDCError::fallback)?;
+        let room = if self.coinbase_transaction_payouts_with_jds {
+            // The payout distribution names the outputs, and the extension requires the token's
+            // own to be empty; a JDS handing some out breaks it, so JDC falls back from it.
+            if !msg.coinbase_outputs.as_bytes().is_empty() {
+                return Err(JDCError::fallback(
+                    JDCErrorKind::AllocateMiningJobTokenSuccessCoinbaseOutputsWithPayoutDistribution,
+                ));
+            }
+            None
+        } else {
+            // Everything about the answer that can fail is checked before any of it is kept, so
+            // outputs JDC can't use leave its outputs, tokens and constraints as they were, and
+            // JDC falls back from the JDS that handed them out.
+            let (new_coinbase_outputs, constraints) =
+                usable_coinbase_outputs(msg.coinbase_outputs.as_bytes())
+                    .map_err(JDCError::fallback)?;
 
-        // The Template Provider gets constraints for the JDS's first outputs, and afterwards only
-        // when outputs need more room than it reserves (see `OutputSets`).
-        let room = self
-            .output_sets
-            .with(|output_sets| output_sets.update(new_coinbase_outputs, constraints))
-            .map_err(JDCError::shutdown)?;
+            // The Template Provider gets constraints for the JDS's first outputs, and afterwards
+            // only when outputs need more room than it reserves (see `OutputSets`).
+            self.output_sets
+                .with(|output_sets| output_sets.update(new_coinbase_outputs, constraints))
+                .map_err(JDCError::shutdown)?
+        };
         self.mining_job_tokens
             .with(|tokens| tokens.queue(msg.clone()))
             .map_err(JDCError::shutdown)?;
@@ -126,12 +142,8 @@ impl HandleJobDeclarationMessagesFromServerOwnedAsync for ChannelManager {
             }
             Some(WaitingWork::CustomJob { template }) => {
                 if let Some(custom_job) = self.build_coinbase_only_custom_job(&template).await? {
-                    let message = MiningOwned::SetCustomMiningJob(custom_job);
-                    let sv2_frame = OutboundFrame::from_message(AnyMessageOwned::Mining(message))
-                        .map_err(JDCError::shutdown)?;
-                    self.channel_manager_io
-                        .upstream_sender
-                        .send(sv2_frame)
+                    custom_job
+                        .forward(&self.channel_manager_io)
                         .await
                         .map_err(|_e| JDCError::fallback(JDCErrorKind::ChannelErrorSender))?;
                 }
@@ -195,6 +207,13 @@ impl HandleJobDeclarationMessagesFromServerOwnedAsync for ChannelManager {
             // and the shares cached for its template go too.
             self.cached_shares.remove(&rejected.template.template_id);
             return Ok(());
+        }
+        if error_code == ERROR_CODE_STALE_PAYOUT_DISTRIBUTION {
+            warn!(
+                "Received non-fatal DeclareMiningJobError from JDS: stale-payout-distribution (request_id={})",
+                msg.request_id
+            );
+            return self.on_stale_payout_distribution(rejected);
         }
 
         warn!(
@@ -364,7 +383,7 @@ impl HandleJobDeclarationMessagesFromServerOwnedAsync for ChannelManager {
 
         self.channel_manager_io
             .jd_sender
-            .send(message)
+            .send((message, None))
             .await
             .map_err(|_e| JDCError::fallback(JDCErrorKind::ChannelErrorSender))?;
 
@@ -391,7 +410,7 @@ fn usable_coinbase_outputs(
     if outputs.iter().any(|output| output.value != Amount::ZERO) {
         return Err(JDCErrorKind::AllocateMiningJobTokenSuccessCoinbaseOutputValue);
     }
-    if coinbase_suffix_size(&outputs) > u16::MAX as usize {
+    if !fits_a_job_coinbase(&outputs) {
         return Err(JDCErrorKind::AllocateMiningJobTokenSuccessCoinbaseOutputsTooLarge);
     }
     let constraints = coinbase_output_constraints_message(outputs.clone()).map_err(|e| {
@@ -410,6 +429,12 @@ const WITNESS_COMMITMENT_SCRIPT_SIZE: usize = 38;
 const WITNESS_RESERVED_VALUE_SIZE: usize = 34;
 // The locktime, which ends the coinbase.
 const LOCKTIME_SIZE: usize = 4;
+
+// Whether a job whose coinbase pays `outputs` fits the messages that carry it (see
+// `coinbase_suffix_size`).
+pub(super) fn fits_a_job_coinbase(outputs: &[TxOut]) -> bool {
+    coinbase_suffix_size(outputs) <= u16::MAX as usize
+}
 
 // The size of `DeclareMiningJob.coinbase_tx_suffix` for a coinbase paying `outputs`: the input's
 // sequence, the outputs with the witness commitment a Template Provider adds (sv2-spec 07,

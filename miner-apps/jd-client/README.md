@@ -137,6 +137,15 @@ as usual. Shares found on the refused template don't reach the Pool.
 JDC still leaves a JDS that keeps refusing: ten declarations in a row refused with
 `stale-chain-tip` or `missing-txs`, with none accepted in between, make it fall back.
 
+Set `coinbase_transaction_payouts = true` on an entry whose pool supports the Coinbase Transaction
+Payouts extension (0x0003). JDC then negotiates the extension with that Pool and JDS, and the
+coinbase of every job declared there pays the pool's payout distribution directly instead of a
+single pool output. The JDS's token answers then carry no coinbase outputs, and JDC falls back
+from a JDS whose payout distribution doesn't deserialize, needs more room or sigops than
+`CoinbaseOutputConstraints` can reserve, is too big for a job's coinbase, or doesn't increase its
+`distribution_id`. It is off by default: a JDS that does not implement extension negotiation never
+answers the request.
+
 ### Miner Telemetry
 
 JDC can enrich the monitoring API with telemetry from SV2 ASIC miners that connect directly to JDC.

@@ -1,6 +1,7 @@
 use stratum_core::extensions_sv2::{
-    EXTENSION_TYPE_EXTENSIONS_NEGOTIATION, MESSAGE_TYPE_REQUEST_EXTENSIONS,
-    MESSAGE_TYPE_REQUEST_EXTENSIONS_ERROR, MESSAGE_TYPE_REQUEST_EXTENSIONS_SUCCESS,
+    EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS, EXTENSION_TYPE_EXTENSIONS_NEGOTIATION,
+    MESSAGE_TYPE_REQUEST_EXTENSIONS, MESSAGE_TYPE_REQUEST_EXTENSIONS_ERROR,
+    MESSAGE_TYPE_REQUEST_EXTENSIONS_SUCCESS, MESSAGE_TYPE_SET_PAYOUT_DISTRIBUTION,
 };
 
 use crate::stratum_core::{
@@ -109,13 +110,18 @@ pub fn is_template_distribution_message(extension_type: u16, message_type: u8) -
 }
 
 pub fn is_extensions_message(extension_type: u16, message_type: u8) -> bool {
-    extension_type == EXTENSION_TYPE_EXTENSIONS_NEGOTIATION
-        && matches!(
+    match extension_type {
+        EXTENSION_TYPE_EXTENSIONS_NEGOTIATION => matches!(
             message_type,
             MESSAGE_TYPE_REQUEST_EXTENSIONS
                 | MESSAGE_TYPE_REQUEST_EXTENSIONS_ERROR
                 | MESSAGE_TYPE_REQUEST_EXTENSIONS_SUCCESS
-        )
+        ),
+        EXTENSION_TYPE_COINBASE_TRANSACTION_PAYOUTS => {
+            message_type == MESSAGE_TYPE_SET_PAYOUT_DISTRIBUTION
+        }
+        _ => false,
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

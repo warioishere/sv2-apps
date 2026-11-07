@@ -1,3 +1,4 @@
+use std::sync::atomic::Ordering;
 use stratum_apps::stratum_core::mining_sv2::{
     CloseChannelOwned, NewExtendedMiningJobOwned, NewMiningJobOwned,
     OpenExtendedMiningChannelSuccessOwned, OpenMiningChannelErrorOwned,
@@ -15,6 +16,7 @@ use stratum_apps::{
             extranonce_manager::{ExtranonceAllocator, ExtranoncePrefix, MAX_EXTRANONCE_LEN},
             server::jobs::factory::JobFactory,
         },
+        extensions_sv2::ERROR_CODE_STALE_PAYOUT_DISTRIBUTION,
         handlers_sv2::{
             HandleMiningMessagesFromClientOwnedAsync, HandleMiningMessagesFromServerOwnedAsync,
             SupportedChannelTypes,
@@ -278,13 +280,8 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                 _ => None,
             };
             if let Some(custom_job) = custom_job {
-                let set_custom_job = MiningOwned::SetCustomMiningJob(custom_job);
-                let sv2_frame =
-                    OutboundFrame::from_message(AnyMessageOwned::Mining(set_custom_job))
-                        .map_err(JDCError::shutdown)?;
-                self.channel_manager_io
-                    .upstream_sender
-                    .send(sv2_frame)
+                custom_job
+                    .forward(&self.channel_manager_io)
                     .await
                     .map_err(|_e| JDCError::fallback(JDCErrorKind::ChannelErrorSender))?;
                 _ = self.allocate_tokens(1).await;
@@ -643,6 +640,8 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         info!("Received: {} ✅", msg);
+        self.stale_payout_distribution_rejections
+            .store(0, Ordering::Relaxed);
 
         let mut shares_to_submit_upstream = Vec::new();
 
@@ -730,6 +729,9 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
     // fallback mechanism. However, `stale-chain-tip` can
     // happen during benign JD races when the chain tip changes between
     // declaration and custom job submission, so it is treated as non-fatal.
+    // `stale-payout-distribution` covers the same kind of race with a new
+    // payout distribution, and is fatal only when it persists (see
+    // `ChannelManager::on_stale_payout_distribution`).
     async fn handle_set_custom_mining_job_error(
         &mut self,
         _server_id: Option<usize>,
@@ -759,6 +761,13 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
             );
             self.cached_shares.remove(&rejected.template.template_id);
             return Ok(());
+        }
+        if error_code == ERROR_CODE_STALE_PAYOUT_DISTRIBUTION {
+            warn!(
+                "Received non-fatal SetCustomMiningJobError from upstream: stale-payout-distribution (request_id={})",
+                msg.request_id
+            );
+            return self.on_stale_payout_distribution(rejected);
         }
 
         warn!(
